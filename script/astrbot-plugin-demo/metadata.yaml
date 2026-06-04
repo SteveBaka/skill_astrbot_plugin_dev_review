@@ -1,0 +1,6 @@
+name: astrbot_plugin_helloworld
+display_name: helloworld
+desc: AstrBot 插件示例。
+version: v1.0.0
+author: YourName
+repo: https://github.com/YourName/astrbot_plugin_helloworld

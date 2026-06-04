@@ -1,0 +1,7 @@
+{
+  "default_city": {
+    "type": "string",
+    "description": "默认查询城市",
+    "default": "北京"
+  }
+}

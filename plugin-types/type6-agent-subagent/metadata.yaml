@@ -1,0 +1,6 @@
+name: astrbot_plugin_agent
+display_name: Agent 子智能体
+desc: AI Agent 多工具协作插件，支持搜索和总结。
+version: v1.0.0
+author: Example
+repo: https://github.com/Example/astrbot_plugin_agent

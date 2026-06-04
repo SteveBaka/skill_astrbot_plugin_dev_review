@@ -1,0 +1,12 @@
+{
+  "enable_greeting": {
+    "type": "bool",
+    "description": "是否启用问候语",
+    "default": true
+  },
+  "greeting_message": {
+    "type": "string",
+    "description": "自定义问候语",
+    "default": "你好！"
+  }
+}

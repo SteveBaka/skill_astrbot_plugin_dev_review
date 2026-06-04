@@ -1,0 +1,6 @@
+name: astrbot_plugin_dashboard
+display_name: Dashboard
+desc: 提供 Web API 和 Dashboard 页面集成。
+version: v1.0.0
+author: Example
+repo: https://github.com/Example/astrbot_plugin_dashboard

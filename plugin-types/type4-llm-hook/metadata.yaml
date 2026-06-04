@@ -1,0 +1,6 @@
+name: astrbot_plugin_llm_hook
+display_name: LLM 钩子
+desc: 拦截和修改 LLM 请求/响应的钩子插件。
+version: v1.0.0
+author: Example
+repo: https://github.com/Example/astrbot_plugin_llm_hook

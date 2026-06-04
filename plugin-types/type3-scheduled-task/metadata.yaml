@@ -1,0 +1,6 @@
+name: astrbot_plugin_daily_report
+display_name: 每日报告
+desc: 定时任务插件，每日定时执行报告生成。
+version: v1.0.0
+author: Example
+repo: https://github.com/Example/astrbot_plugin_daily_report

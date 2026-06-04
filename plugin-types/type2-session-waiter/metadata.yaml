@@ -1,0 +1,6 @@
+name: astrbot_plugin_quiz
+display_name: 问答游戏
+desc: 基于 session_waiter 的多轮问答游戏插件。
+version: v1.0.0
+author: Example
+repo: https://github.com/Example/astrbot_plugin_quiz
