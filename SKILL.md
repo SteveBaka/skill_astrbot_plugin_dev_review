@@ -305,27 +305,61 @@ review/review-workflow.md (orchestrator)
 
 ## Token Efficiency Guide
 
-### Reading Priority
+This skill contains 50+ files. Reading all of them wastes tokens. Follow these rules:
+
+### Reading Priority (Tiered)
 
 **Tier 0 — Official docs** (mandatory, targeted by type):
 - `https://github.com/AstrBotDevs/AstrBot/tree/master/docs/en/dev/star/guides`
+- Platform adapters MUST use: `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
 
-**Tier 1 — Core rules** (~300 lines):
-- `SKILL.md` + `review/main-file-checklist.md` §1
+**Tier 1 — Core rules** (always read, ~300 lines):
+- `SKILL.md` — this file (Mandatory Rules + Workflow)
+- `review/main-file-checklist.md` §1 — Import reference table (35+ entries)
 
-**Tier 2 — Task-specific** (pick 1-2):
-- New plugin → `plugin-development-workflow.md`
-- LLM tools → `agent/tools.md`
-- Cron → `agent/cron.md`
-- Hooks → `agent/hooks.md`
-- Config → `references/conf-schema.md`
-- WebUI → `webui/plugin-pages.md`
-- Split → `references/modular-split.md`
+**Tier 2 — Task-specific** (pick 1-2 based on intent):
 
-**Tier 3 — When needed**:
-- `plugin-types/type*/main.py` — one example
-- `review/auto-fix-guide.md` — fixing issues
-- `references/plugin-patterns.md` — implementation patterns
+| Task | File |
+|------|------|
+| New plugin | `plugin-development-workflow.md` |
+| LLM tools | `agent/tools.md` |
+| Cron | `agent/cron.md` |
+| Hooks | `agent/hooks.md` |
+| Config | `references/conf-schema.md` |
+| WebUI | `webui/plugin-pages.md` |
+| Split main.py | `references/modular-split.md` |
+| Platform adapter | `platform_adapters/adapter_interface.md` |
+| Storage | `storage_utils/kv_storage.md` + `storage_utils/file_storage.md` |
+| Image rendering | `design_standards/visual_utils.md` |
+
+**Tier 3 — Reference** (read when needed):
+
+| File | Purpose |
+|------|---------|
+| `references/core-concepts.md` | API quick index |
+| `references/best-practices.md` | Best practices |
+| `references/plugin-patterns.md` | 10 implementation patterns |
+| `agent/official-tools.md` | Built-in tool list |
+| `agent/subagents.md` | Sub-agent handoff |
+| `agent/conversation.md` | Prompt injection strategies |
+| `agent/persona-control.md` | Persona CRUD |
+| `agent/context-compression.md` | Compression parameters |
+| `agent/agent-runner.md` | Agent Runner (v4.7.0+) |
+| `agent/sandbox.md` | Sandbox runtime |
+| `agent/register-skill.md` | Skill registration |
+| `design_standards/architecture_overview.md` | AstrBot core architecture |
+| `design_standards/event_flow.md` | Message flow model |
+| `design_standards/context_usage.md` | Context object API |
+| `design_standards/sandbox.md` | Sandbox storage mounting |
+| `messages/model.md` | AstrBotMessage structure |
+| `messages/events.md` | AstrMessageEvent API |
+| `messages/umo.md` | Unified Message Origin |
+| `platform_adapters/message_conversion.md` | Message conversion |
+| `platform_adapters/telegram_media_group.md` | Telegram media groups |
+| `storage_utils/plugin-i18n.md` | Internationalization |
+| `review/general-file-checklist.md` | General code review |
+| `plugin-types/REVIEW-REPORTS.md` | Review report examples |
+| `plugin-types/type*/main.py` | Plugin type examples |
 
 ### With MCP
 
@@ -339,8 +373,7 @@ Use `search_docs(query)` to find content across all 46 documents without reading
 skill_astrbot_plugin_dev_review/
 │
 ├── SKILL.md                              # This file — primary entry
-├── AGENTS.md                             # Skill system identifier
-├── architecture.md                       # Machine-readable architecture
+├── AGENTS.md                             # Skill system identifier (AI auto-detects)
 ├── README.md                             # Chinese-language overview
 ├── plugin-development-workflow.md        # 9-step development workflow
 │

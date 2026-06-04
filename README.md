@@ -106,7 +106,6 @@ skill_astrbot_plugin_dev_review/
 │
 ├── SKILL.md                              # 主入口（英文），含 Mandatory Rules + Workflow
 ├── AGENTS.md                             # Skill 体系标识（AI 自动识别入口）
-├── architecture.md                       # 机器可读的完整架构（文件地图 + 调用关系）
 ├── README.md                             # 本文件（中文）
 ├── LICENSE                               # MIT 授权
 ├── plugin-development-workflow.md        # 9 步开发流程
@@ -193,7 +192,7 @@ skill_astrbot_plugin_dev_review/
 
 本 Skill 的审核规则灵感来源于以下项目，在此对AstrBot Community团队表示由衷的感谢：
 
-- [AstrBot-Skill v4](https://github.com/xunxiing/AstrBot-Skill/tree/v4) — AstrBot 的 AGENT SKILL 仓库，包含插件开发的结构化技术文档和 Skill 定义。
+- [AstrBot-Skill v4](https://github.com/xunxiing/AstrBot-Skill/tree/v4) — 一个 AstrBot 的 AGENT SKILL 仓库，包含插件开发的结构化技术文档和 Skill 定义。
 - [astr-plugin-reviewer](https://github.com/AstrBotDevs/astr-plugin-reviewer) — GitHub App 自动审核机器人
 - 个人开发的插件实践：`astrbot_plugin_synochat_adapter`（适配器配置冲突）、`astrbot_plugin_mimo_tts`（模块化拆分）
 
@@ -257,7 +256,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install mcp pyyaml uvicorn star
 - [AstrBot 仓库](https://github.com/AstrBotDevs/AstrBot)
 - [AstrBot 开发文档](https://docs.astrbot.app/dev/)
 - [AstrBot 插件市场](https://github.com/AstrBotDevs/AstrBot-Plugins)
-- [AstrBot-Skill 官方的Skill仓库](https://github.com/xunxiing/AstrBot-Skill/tree/v4)
+- [AstrBot-Skill 仓库](https://github.com/xunxiing/AstrBot-Skill/tree/v4)
 
 ## 致谢
 

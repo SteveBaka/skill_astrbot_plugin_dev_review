@@ -62,19 +62,21 @@ class ExamplePlugin(Star):
 
 ## 4. Event Listening
 
-Commonly used filter decorators:
+Available filter decorators (v4.x):
 
 | Decorator | Purpose |
 |-----------|---------|
 | `@filter.command("name")` | Register a command |
-| `@filter.command_group("group")` | Command group |
-| `@filter.on_full_match(...)` | Full match |
-| `@filter.on_prefix(...)` | Prefix match |
-| `@filter.on_keyword(...)` | Keyword match |
-| `@filter.on_regex(...)` | Regex match |
-| `@filter.event_message_type(...)` | Message type filter |
+| `@filter.command_group("group")` | Command group (must use function pattern) |
+| `@filter.event_message_type(...)` | Message type filter (`EventMessageType.ALL` etc.) |
 | `@filter.platform_adapter_type(...)` | Platform filter |
 | `@filter.permission_type(...)` | Permission filter |
+| `@filter.on_llm_request()` | LLM request hook |
+| `@filter.on_llm_response()` | LLM response hook |
+| `@filter.on_decorating_result()` | Result decorating hook |
+| `@filter.after_message_sent()` | After message sent hook |
+
+> ⚠️ `on_full_match`, `on_keyword`, `on_regex`, `on_prefix` are **REMOVED** in v4.x. Use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching instead.
 
 Special hooks (`on_llm_request`, `on_llm_response`, `on_decorating_result`, `after_message_sent`):
 - Use `await event.send(...)` instead of `yield`
