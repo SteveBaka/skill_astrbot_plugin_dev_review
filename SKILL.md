@@ -295,6 +295,8 @@ review/review-workflow.md (orchestrator)
 - Use ruff to format before submission <!-- Source: plugin-new.md -->
 - Do NOT use `requests` for network requests — use `aiohttp` or `httpx` (async) <!-- Source: plugin-new.md -->
 - Store persistent data in `data/` directory (via `StarTools.get_data_dir()`), NOT in the plugin's own directory — prevents data loss on reinstall <!-- Source: plugin-new.md -->
+- `StarTools.get_data_dir()` MUST be called from a `Star` subclass (e.g., plugin `__init__`), NOT from Service/Manager classes — pass `data_dir` as parameter <!-- Source: real-world bug -->
+- If using sub-packages (handlers/, services/, etc.), add `sys.path.insert(0, os.path.dirname(__file__))` at top of main.py to avoid namespace collision with other plugins <!-- Source: real-world bug -->
 - Plugin naming: start with `astrbot_plugin_`, lowercase, no spaces, concise <!-- Source: plugin-new.md -->
 - `short_desc` field in metadata.yaml: one-line summary for marketplace cards; falls back to `desc` if omitted <!-- Source: plugin-new.md -->
 - `support_platforms` field: list of platform keys (e.g., `telegram`, `discord`, `aiocqhttp`) <!-- Source: plugin-new.md -->

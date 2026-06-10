@@ -498,6 +498,76 @@ api_url = "https://api.example.com/v1"
 resp = await fetch(api_url)
 ```
 
+### FIX-26: Namespace Collision (Generic Package Names)
+
+**Problem**: `ImportError: attempted relative import beyond top-level package`. AstrBot adds all plugin dirs to `sys.path`. Using generic names like `services`, `models`, `utils` causes Python to find another plugin's package with the same name.
+
+```python
+# ❌ WRONG — another plugin also has services/ directory
+from services.persona_manager import PersonaManager  # Finds wrong services/!
+
+# ✅ FIX — add plugin dir to sys.path at top of main.py
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+from services.persona_manager import PersonaManager  # Now finds YOUR services/
+```
+
+**Rule**: If your plugin uses sub-packages (handlers/, services/, etc.), add `sys.path.insert(0, os.path.dirname(__file__))` at the top of `main.py` before any sub-package imports.
+
+### FIX-27: StarTools.get_data_dir() Called Outside Star Subclass
+
+**Problem**: `RuntimeError: 无法获取模块 xxx 的元数据信息`. `StarTools.get_data_dir()` uses the call stack to infer the plugin name — it must be called from within a `Star` subclass.
+
+```python
+# ❌ WRONG — called from non-Star class
+class StorageManager:
+    def __init__(self):
+        self._data_dir = StarTools.get_data_dir()  # RuntimeError!
+
+# ✅ FIX — call in Star subclass, pass as parameter
+class MyPlugin(Star):
+    def __init__(self, context, config):
+        super().__init__(context)
+        data_dir = StarTools.get_data_dir()
+        self.storage = StorageManager(data_dir)
+
+class StorageManager:
+    def __init__(self, data_dir: Path):
+        self._data_dir = data_dir
+```
+
+### FIX-28: Stale Imports After Refactoring
+
+**Problem**: `ImportError: cannot import name 'xxx' from 'yyy'`. After refactoring a module (e.g., changing functions to classes), the importing file still references old names.
+
+```python
+# ❌ WRONG — emotion_engine.py was refactored, old variables no longer exist
+from services.emotion_engine import emotion_engine, persona_simulator
+
+# ✅ FIX — update imports to match current module exports
+from services.emotion_engine import LightweightEmotionAnalyzer, EmotionEngine
+```
+
+**Rule**: After any refactoring, scan all files that import from the changed module and verify the imported names still exist.
+
+### FIX-29: Missing async on Non-Handler Methods
+
+**Problem**: `SyntaxError: 'await' outside async function`. A regular method (not a `@filter` handler) uses `await` but is missing `async`.
+
+```python
+# ❌ WRONG
+class PromptBuilder:
+    def build_context(self, memories):  # Missing async!
+        result = await self.llm.generate(memories)  # SyntaxError
+
+# ✅ FIX
+class PromptBuilder:
+    async def build_context(self, memories):  # Add async
+        result = await self.llm.generate(memories)
+```
+
+**Note**: FIX-04 covers handlers missing `async`. This FIX covers non-handler methods (utility classes, services, builders) that also need `async` when using `await`.
+
 ---
 
 ## Verification

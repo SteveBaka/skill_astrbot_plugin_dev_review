@@ -9,6 +9,7 @@ This file applies to all .py files **except** main.py, and to general code patte
 - [ ] Clear naming (functions `snake_case`, classes `CamelCase`, constants `UPPER_CASE`)
 - [ ] No overly complex code blocks (ideally < 50 lines per function)
 - [ ] **No unused imports** — every `import X` / `from X import Y` must be used somewhere in the file
+- [ ] **No stale imports** — after refactoring, verify all imported names still exist in the source module
 - [ ] **No dead code** — every variable, function, and data structure must be referenced; remove unused API lists, unreachable branches, commented-out code
 - [ ] **No duplicate code** — the same list/data should not be defined in multiple places; extract to a shared constant or module
 - [ ] No magic numbers (use constants or config)
@@ -19,6 +20,7 @@ This file applies to all .py files **except** main.py, and to general code patte
 - [ ] Logic is correct, edge cases handled
 - [ ] No off-by-one errors
 - [ ] Consistent return value types
+- [ ] **All `await` calls are inside `async def` functions** — not just handlers, but also utility methods, service classes, builders
 - [ ] Async functions correctly use `await`
 
 ### 3. Security
@@ -62,8 +64,14 @@ This file applies to all .py files **except** main.py, and to general code patte
 ### Data Persistence
 
 - [ ] Uses `StarTools.get_data_dir()` for data directory (returns `Path`)
+- [ ] `StarTools.get_data_dir()` is called from a `Star` subclass (not from Service/Manager classes)
 - [ ] No hardcoded file paths
 - [ ] Data path is `data/plugin_data/<plugin_name>/`
+
+### Namespace Safety
+
+- [ ] No generic package names (`services`, `models`, `utils`, `pages`) without `sys.path.insert(0, os.path.dirname(__file__))` in main.py
+- [ ] All sub-package imports resolve to the correct plugin's directory
 
 ### Error Handling
 

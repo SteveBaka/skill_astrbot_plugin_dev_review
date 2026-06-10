@@ -131,3 +131,57 @@ your_plugin/
   skills/
     SKILL.md
 ```
+
+## 14. StarTools.get_data_dir() Context Restriction
+
+`StarTools.get_data_dir()` uses the call stack to infer the plugin name. It **MUST be called from a `Star` subclass context** (e.g., the plugin's `__init__`). Non-Star classes (Service, Manager, etc.) cannot call it directly.
+
+```python
+# ✅ CORRECT — call in Star subclass, pass to other components
+class MyPlugin(Star):
+    def __init__(self, context: Context, config: AstrBotConfig):
+        super().__init__(context)
+        self.config = config
+        data_dir = StarTools.get_data_dir()
+        self.storage = StorageManager(data_dir)
+
+class StorageManager:
+    def __init__(self, data_dir: Path):  # Accept as parameter
+        self._data_dir = data_dir
+```
+
+```python
+# ❌ WRONG — calling from non-Star class
+class StorageManager:
+    def __init__(self):
+        self._data_dir = StarTools.get_data_dir()  # RuntimeError!
+```
+
+## 15. Avoid Generic Package Names
+
+In a multi-plugin environment, AstrBot adds all plugin directories to `sys.path`. Using generic names like `services`, `models`, `utils`, `pages` causes namespace collisions with other plugins.
+
+```python
+# ❌ WRONG — absolute import with generic name
+from services.persona_manager import PersonaManager  # May find another plugin's services/!
+
+# ✅ FIX — use plugin-specific prefix or sys.path.insert
+# Option 1: Prefix your package name
+from my_plugin_services.persona_manager import PersonaManager
+
+# Option 2: Add plugin dir to sys.path in main.py
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+from services.persona_manager import PersonaManager  # Now finds YOUR services/
+```
+
+**Rule**: If using sub-packages (handlers/, services/, etc.), add `sys.path.insert(0, os.path.dirname(__file__))` at the top of `main.py` before any relative imports. Or use plugin-prefixed package names.
+
+## 16. Sync Code to Runtime Environment
+
+AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot.
+
+**Checklist**:
+- [ ] Code changes are in the directory AstrBot loads from
+- [ ] No stale `.pyc` or `__pycache__` from old versions
+- [ ] All imports match the current module exports (no stale variable names after refactoring)

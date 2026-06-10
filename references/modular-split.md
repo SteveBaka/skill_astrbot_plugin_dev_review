@@ -29,6 +29,8 @@ my_plugin/
     └── api_client.py    # External API client with async close()
 ```
 
+> ⚠️ **Namespace collision warning**: Names like `services/`, `handlers/`, `models/` are generic. In multi-plugin environments, AstrBot adds all plugin dirs to `sys.path`, so `from services.xxx import ...` may find another plugin's `services/`. Add `sys.path.insert(0, os.path.dirname(__file__))` at the top of `main.py` before any sub-package imports.
+
 ## What Stays in main.py
 
 main.py keeps **only** these responsibilities:

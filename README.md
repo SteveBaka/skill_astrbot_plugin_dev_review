@@ -26,6 +26,8 @@ from astrbot.api import logger
 - **命令参数绑定**：`event.message_str` 取代函数参数，避免 `got multiple values` 错误
 - **ToolExecResult 兼容性**：Python 3.12 下直接返回 `str` 即可
 - **未使用 import / 死代码**：LLM 常生成不需要的 import 和未使用的变量
+- **StarTools 调用限制**：`get_data_dir()` 必须在 `Star` 子类中调用，Service/Manager 类不能直接调用
+- **命名空间冲突**：`services/`、`handlers/` 等通用包名在多插件环境下会冲突
 
 ## 核心工作流
 
@@ -94,6 +96,8 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 代码清理 | 审核前移除未使用 import、死代码、重复定义 |
 | 网络库 | 必须用 `aiohttp`/`httpx`（异步），不能用 `requests` |
 | 数据存储 | 持久化数据存 `data/` 目录（`StarTools.get_data_dir()`），不存插件目录 |
+| StarTools | `get_data_dir()` 必须在 `Star` 子类中调用，不能在 Service 类中直接调用 |
+| 命名空间 | 使用 `services/` 等通用包名时，main.py 顶部加 `sys.path.insert(0, os.path.dirname(__file__))` |
 | 插件命名 | `astrbot_plugin_` 前缀，小写，无空格 |
 | 审核流程 | 用户要求审核时，必须全量检查所有文件 |
 | 敏感操作 | git push 等必须经用户确认 |
