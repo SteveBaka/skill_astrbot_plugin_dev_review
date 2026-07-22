@@ -113,6 +113,7 @@ from astrbot.core.utils.session_waiter import session_waiter, SessionController
 ## 2. Plugin Registration & Main Class
 
 - [ ] File MUST contain a class inheriting from `Star`
+- [ ] Plugin package / folder name matches `metadata.yaml` `name` and `^astrbot_plugin_[a-z0-9_]+$` (confirmed with user before scaffold)
 - [ ] `__init__` MUST accept `context: Context`
 - [ ] `__init__` MUST call `super().__init__(context)`
 - [ ] If plugin uses config, `__init__` MUST also accept `config: AstrBotConfig` and call `self.config = config`

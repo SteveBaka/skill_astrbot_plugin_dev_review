@@ -107,9 +107,10 @@ From official AstrBot dev principles (`star/plugin-new.md`):
 From `star/plugin-new.md`:
 
 - Start with `astrbot_plugin_`
-- Lowercase only
-- No spaces
+- Lowercase only; digits and underscore allowed after prefix
+- No spaces or hyphens in package `name`
 - Concise
+- **Before scaffold**: confirm `name` + `author` with the user (SKILL.md Step 0.2); do not invent author handles
 
 ## 13. Skills Bundling
 
@@ -179,9 +180,11 @@ from services.persona_manager import PersonaManager  # Now finds YOUR services/
 
 ## 16. Sync Code to Runtime Environment
 
-AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot.
+AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot. Local install is supported on recent cores (≥4.26.3) with install-source validation.
 
 **Checklist**:
 - [ ] Code changes are in the directory AstrBot loads from
 - [ ] No stale `.pyc` or `__pycache__` from old versions
 - [ ] All imports match the current module exports (no stale variable names after refactoring)
+- [ ] If tools missing: check WebUI tool enable/permission separately from plugin enable (≥4.26.x)
+- [ ] After uninstall tests: expect plugin KV cleared (≥4.26.2)

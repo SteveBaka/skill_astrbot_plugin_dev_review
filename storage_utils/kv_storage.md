@@ -18,15 +18,17 @@ await self.delete_kv_data(key: str)                 # Delete
 - **Persistence**: Automatically persisted to `data/metadata/kv_storage.db`
 - **Async**: All interfaces are async methods
 
+## Lifecycle (≥ v4.26.2)
+
+- **On plugin uninstall**, AstrBot **clears this plugin's KV data** (framework behavior).
+- Do **not** assume scores, sessions, or caches in KV survive uninstall/reinstall.
+- For data that must survive reinstall, store under plugin data dir via `StarTools.get_data_dir()` (files you control), document the path for users, or use external storage.
+
 ## Usage Example
 
 ```python
-# Store user scores
+# Call only from Star plugin methods (self is Star)
 await self.put_kv_data("user_scores", {"alice": 100, "bob": 85})
-
-# Retrieve
 scores = await self.get_kv_data("user_scores", default={})
-
-# Delete
 await self.delete_kv_data("user_scores")
 ```

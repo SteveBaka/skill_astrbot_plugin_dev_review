@@ -14,15 +14,17 @@
 
 ## 2. metadata.yaml Field Validation
 
+**Pre-scaffold gate** (see SKILL.md Step 0.2): `name` and `author` must match values **confirmed with the user** before first file write.
+
 **Required fields**:
 
 | Field | Rule |
 |-------|------|
-| `name` | Non-empty, `astrbot_plugin_` prefix recommended |
+| `name` | Non-empty; **must** match `^astrbot_plugin_[a-z0-9_]+$` and equal the plugin folder name |
 | `desc` or `description` | Non-empty, **cannot have both** |
-| `version` | Non-empty, format like `v1.0.0` |
-| `author` | Non-empty |
-| `repo` | Non-empty, valid GitHub URL |
+| `version` | Non-empty, e.g. `v1.0.0` |
+| `author` | Non-empty; equals user-confirmed author |
+| `repo` | Valid URL when published; **may be empty string on first scaffold** |
 
 **Optional fields**: `display_name`, `short_desc`, `astrbot_version`, `support_platforms`, `tags`, `social_link`
 
@@ -50,9 +52,11 @@
 ## 4. _conf_schema.json Validation (if exists)
 
 - Must be valid JSON
+- **UTF-8 BOM is accepted by AstrBot ≥4.26.7**; prefer UTF-8 without BOM for editor portability
 - Each config item must have `type` field
 - `type` must be: `string`, `text`, `int`, `float`, `bool`, `object`, `list`, `dict`, `template_list`, `file`
 - Recommended: `description` and `default` for each item
+- First generation: `description` / `hint` language matches user language
 
 ## 5. requirements.txt Validation (if exists)
 

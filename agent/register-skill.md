@@ -63,8 +63,19 @@ Instructions, context, and references for the AI agent.
 4. Skills appear in WebUI and become available to the agent system
 5. On plugin uninstall/update, Skills are removed/refreshed
 
+## Plugin `skills/` vs Workspace Skills
+
+| Source | Where | Typical use |
+|--------|--------|-------------|
+| **Plugin-bundled** | `your_plugin/skills/` | Ships with plugin; read-only in WebUI; removed/updated with plugin |
+| **Workspace skills** | Session / project workspace (runtime, ≥4.26.0) | Loaded into requests when configured; discovery hardened by core |
+
+Do not confuse AstrBot native Skills with this Kilo skill repo. For plugin authors, prefer documenting both if your product relies on either.
+
+Backups may include the skills directory (≥4.26.0). Versioned skill download archive names are handled by core (≥4.26.7).
+
 ## Usage in Agent System
 
-Registered Skills appear in the LLM tool manager and can be invoked by the agent system automatically. The agent can read the Skill's `SKILL.md` content to understand what capabilities are available.
+Registered Skills appear in the skill manager and can be used by the agent system. The agent reads each Skill's `SKILL.md` for instructions.
 
-For detailed skill creation, see the AstrBot documentation at https://docs.astrbot.app.
+Official plugin overview: `docs/en/dev/star/plugin-new.md` (not legacy `docs/en/dev/plugin.md`).

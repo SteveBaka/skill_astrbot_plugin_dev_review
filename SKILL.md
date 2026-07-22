@@ -17,7 +17,7 @@ description: |
 metadata:
   short-description: AstrBot plugin dev + auto review
   version: "2.0"
-  compatibility: astrbot >=4.16
+  compatibility: astrbot >=4.16 (recommend >=4.26 for current runtime behaviors)
   license: MIT
 ---
 
@@ -35,116 +35,114 @@ This Skill consolidates the complete knowledge base of AstrBot plugin developmen
 ## Core Workflow
 
 ```
-Step 0: Understand Intent
+Step 0:   Understand Intent
   ↓
-Step 0.5: Read "Always Read" Docs (3 files)
+Step 0.2: Confirm identity (plugin name + author) — GATE before scaffold
   ↓
-Step 1: Select Type(s)
+Step 0.5: Read official "Always Read" docs (plugin-new + guides)
   ↓
-Step 1.5: Read Type-Specific Docs
+Step 1:   Select Type(s)
   ↓
-Step 2: Scaffold & Implement
+Step 1.5: Read type-specific official docs
+  ↓
+Step 2:   Scaffold & Implement
   ↓
 Step 2.5: Pre-Review Cleanup
   ↓
-Step 3: Validate Metadata
+Step 3:   Validate Metadata
   ↓
-Step 4: Review
+Step 4A:  First-output review (runtime-critical, all new files)
   ↓
-Step 5: Fix if needed → Re-review
+Step 4B:  Full review after features done / user audit request
   ↓
-Deliver
+Step 5:   Fix if needed → Re-review
+  ↓
+Deliver (no git commit/push without explicit user approval)
 ```
 
-> **Critical**: Official AstrBot dev docs on GitHub are the **authoritative source**. The skill's internal docs are supplementary. Always read official docs BEFORE generating code. Do NOT rely on cached knowledge or the skill's internal docs alone — they may be outdated.
+> **Authority order (high → low)**: (1) Official docs under `docs/en/dev/star/**` + adapter doc; (2) this skill; (3) historical pitfall notes. **Never** use legacy `docs/en/dev/plugin.md` as authority (redirect-only / obsolete). When skill conflicts with official docs, **official wins**.
 
 ### Step 0: Understand User Intent
 
 | User Says | Intent | Action |
 |-----------|--------|--------|
-| "Write a plugin that does X" | New plugin | Full workflow |
-| "Add a command to do X" | Add command to existing | Read existing main.py, add handler |
-| "Let AI call my API" | Add LLM tool | `agent/tools.md` + register in `__init__` |
-| "Fix this error" | Bug fix | Read error, find root cause, fix |
-| "Review my code" | Full audit | Run complete review pipeline on ALL files |
-| "Add a scheduled task" | Add cron | `agent/cron.md` |
-| "Make a settings page" | WebUI | `webui/plugin-pages.md` |
+| "Write a plugin that does X" | New plugin | Full workflow starting at Step 0.2 |
+| "Add a command to do X" | Add command to existing | Read existing main.py, add handler (no rename without confirm) |
+| "Let AI call my API" | Add LLM tool | Official `star/guides/ai.md` + `agent/tools.md` |
+| "Fix this error" | Bug fix | Official docs for the API + skill FIX guide; prefer minimal diff |
+| "Review my code" | Full audit | **Phase 4B** full pipeline on ALL files |
+| "Add a scheduled task" | Add cron | Official + `agent/cron.md` |
+| "Make a settings page" | WebUI | Official `star/guides/plugin-pages.md` + `webui/plugin-pages.md` |
 
-### Step 1: Select Plugin Type(s)
+### Step 0.2: Confirm Plugin Name & Author (GATE)
 
-Plugin types are NOT mutually exclusive. A single plugin can combine multiple types:
+**Before creating any plugin directory or writing `metadata.yaml` / `main.py`**, stop and obtain explicit user confirmation:
 
+1. **Plugin package name** (`metadata.yaml` `name` and folder name):
+   - MUST match: `^astrbot_plugin_[a-z0-9_]+$` (prefix `astrbot_plugin_`, lowercase, digits/underscore only, no spaces)
+   - Example: `astrbot_plugin_weather` ✅ | `WeatherPlugin` ❌ | `astrbot-plugin-weather` ❌
+2. **Author** (`metadata.yaml` `author`): exact string the user wants (do not invent a GitHub handle without asking)
+
+**How to ask** (short, in the user's language):
+
+```text
+Before scaffolding, please confirm:
+1) Plugin name (folder + metadata name), format: astrbot_plugin_<name>
+2) Author name for metadata.yaml
+Suggested name: astrbot_plugin_<slug> — OK?
 ```
-Command + LLM Tool:     /weather command AND AI auto-calls weather API
-Command + Cron:         /remind command AND scheduled daily report
-LLM Tool + Hook:        AI calls tool AND hook injects context
-Command + Web API:      /status command AND dashboard page
-```
 
-Decision tree: `plugin-types/README.md`
+**Rules**:
+- If the user already gave both clearly, restate once and proceed only if unambiguous
+- If missing or invalid name, **do not scaffold** until corrected
+- Do not rename an existing published plugin folder without explicit approval
 
-| Type | Core API | File |
-|------|----------|------|
-| Command | `@filter.command` | `references/plugin-patterns.md` §1 |
-| LLM Tool | `FunctionTool` + `add_llm_tools` | `agent/tools.md` |
-| Session | `@session_waiter` | `references/plugin-patterns.md` §3 |
-| Cron | `cron_manager.add_basic_job` | `agent/cron.md` |
-| Hook | `@filter.on_llm_request` | `agent/hooks.md` |
-| Web API | `register_web_api` | `webui/plugin-pages.md` |
-| Agent | `tool_loop_agent` | `agent/invoke-llm.md` |
+### Step 0.5: Read Official "Always Read" Docs (MANDATORY)
 
-### Step 0.5: Read "Always Read" Docs (3 files)
+Fetch with `webfetch` from:
 
-Before anything else, read these 3 official docs regardless of plugin type:
+`https://raw.githubusercontent.com/AstrBotDevs/AstrBot/master/docs/en/dev/<path>`
 
-**Source**: `https://github.com/AstrBotDevs/AstrBot/tree/master/docs/en/dev/star/guides`
-
-> `docs/en/dev/plugin.md` is the OLD doc — it redirects to `star/plugin-new.md`. Always use `star/` paths.
-
-| File | Content |
+| Path | Content |
 |------|---------|
-| `star/plugin-new.md` | Plugin lifecycle, naming conventions, metadata.yaml fields, skills/ bundling, support_platforms, astrbot_version, ruff, development principles |
-| `star/guides/simple.md` | Minimal plugin, `__init__` signature |
-| `star/guides/listen-message-event.md` | Event hooks, filter decorators, command_group |
+| `star/plugin-new.md` | Lifecycle, naming, metadata, skills/, ruff, data dir, aiohttp |
+| `star/guides/simple.md` | Minimal plugin, `__init__` |
+| `star/guides/listen-message-event.md` | Commands, filters, hooks (current API only) |
 
-**How**: `webfetch` → `https://raw.githubusercontent.com/AstrBotDevs/AstrBot/master/docs/en/dev/<path>`
+**Forbidden as authority**: `docs/en/dev/plugin.md` / `docs/zh/dev/plugin.md` (legacy).
 
 ### Step 1: Select Plugin Type(s)
 
-Plugin types are NOT mutually exclusive. A single plugin can combine multiple types:
+Types may combine. Decision tree: `plugin-types/README.md`.
 
-```
-Command + LLM Tool:     /weather command AND AI auto-calls weather API
-Command + Cron:         /remind command AND scheduled daily report
-LLM Tool + Hook:        AI calls tool AND hook injects context
-Command + Web API:      /status command AND dashboard page
-```
-
-Decision tree: `plugin-types/README.md`
-
-| Type | Core API | File |
-|------|----------|------|
-| Command | `@filter.command` | `references/plugin-patterns.md` §1 |
-| LLM Tool | `FunctionTool` + `add_llm_tools` | `agent/tools.md` |
-| Session | `@session_waiter` | `references/plugin-patterns.md` §3 |
-| Cron | `cron_manager.add_basic_job` | `agent/cron.md` |
-| Hook | `@filter.on_llm_request` | `agent/hooks.md` |
-| Web API | `register_web_api` | `webui/plugin-pages.md` |
-| Agent | `tool_loop_agent` | `agent/invoke-llm.md` |
+| Type | Core API | Skill file | Official guide (under docs/en/dev/) |
+|------|----------|------------|-------------------------------------|
+| Command | `@filter.command` | `references/plugin-patterns.md` | `star/guides/listen-message-event.md` |
+| LLM Tool | `FunctionTool` + `add_llm_tools` | `agent/tools.md` | `star/guides/ai.md` |
+| Session | `@session_waiter` | `references/plugin-patterns.md` | `star/guides/session-control.md` |
+| Cron | `cron_manager` | `agent/cron.md` | `star/guides/ai.md` + runtime |
+| Hook | `@filter.on_llm_*` etc. | `agent/hooks.md` | `star/guides/listen-message-event.md` |
+| Web API | `register_web_api` | `webui/plugin-pages.md` | `star/guides/plugin-pages.md` |
+| Agent | `tool_loop_agent` | `agent/invoke-llm.md` | `star/guides/ai.md` |
+| Adapter | Platform adapter | `platform_adapters/adapter_interface.md` | **MUST** `plugin-platform-adapter.md` |
 
 ### Step 1.5: Read Type-Specific Official Docs
 
-After selecting the type, read only the relevant official docs:
+After type selection, fetch only what you need from `docs/en/dev/star/guides/` (same raw base URL as Step 0.5):
 
-| Type | Read |
-|------|------|
+| Type | Path under `docs/en/dev/` |
+|------|---------------------------|
 | LLM Tool / Agent / Cron | `star/guides/ai.md` |
-| Web API | `star/guides/plugin-pages.md` |
-| Platform Adapter | **MUST** use `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md` |
+| Web API / pages | `star/guides/plugin-pages.md` |
 | Config | `star/guides/plugin-config.md` |
-| Image Rendering | `star/guides/html-to-pic.md` |
-| Storage | `star/guides/storage.md` |
-| Message Sending | `star/guides/send-message.md` |
+| Session | `star/guides/session-control.md` |
+| Storage / KV | `star/guides/storage.md` |
+| Image | `star/guides/html-to-pic.md` |
+| Send message | `star/guides/send-message.md` |
+| i18n | `star/guides/plugin-i18n.md` |
+| Platform adapter | `plugin-platform-adapter.md` (not under guides/) |
+
+Also re-check changelog behavior for target version (e.g. ≥4.26.x tool enable vs plugin enable, KV on uninstall).
 
 ### Step 2: Scaffold & Implement
 
@@ -170,13 +168,29 @@ Before running review, clean up the generated code to avoid wasting review cycle
 
 ### Step 3: Validate Metadata
 
-Ensure `metadata.yaml` is complete. First-generation rules: `author` uses user's name, `repo` leaves empty, `display_name`/`desc`/`_conf_schema.json`/`README.md` match user's language.
+Ensure `metadata.yaml` matches **Step 0.2** confirmed `name` + `author`. First-generation: `repo` empty, `display_name`/`desc`/`_conf_schema.json`/`README.md` match user language.
 
 Validation rules: `review/metadata-validation.md`
 
-### Step 4: Review
+### Step 4A: First-Output Review (Runtime Gate)
 
-See **Review Architecture** section below.
+**When**: Immediately after the **first** generation of a new plugin scaffold (or first complete dump of `main.py` + metadata + schema). **Before** telling the user it is ready to install/run.
+
+**Goal**: Prevent first-run crash / load failure. Full pass of `review/review-workflow.md` on **all new files**, with CRITICAL focus:
+
+- Imports (table §1), `async`/`await`, command handlers (`event.message_str`, docstrings)
+- No removed filters (`on_keyword` / …), correct hooks / no yield in hooks
+- `__init__(context[, config])`, `super().__init__`, `field(default_factory=...)`, tools `return str`
+- `metadata.yaml` name/author, `_conf_schema.json` validity, `requirements.txt` cross-check
+- Namespace / `sys.path` if multi-module; `get_data_dir` only from Star
+
+**Must fix all 🔴 before delivery of first scaffold.** See Phase A in `review/review-workflow.md`.
+
+### Step 4B: Full Product Review
+
+**When**: Feature work complete, major change set finished, or user asks review/audit/校验/审核.
+
+**Goal**: Accuracy, security, completeness — full pipeline on **ALL** project files (not only the last diff). Security dimension mandatory. See Phase B in `review/review-workflow.md`.
 
 ---
 
@@ -214,24 +228,36 @@ review/review-workflow.md (orchestrator)
   │       - WebUI plugin pages
   │       - API deprecation checks
   │
-  └── Fix & Re-audit
-      └── review/auto-fix-guide.md (20 patterns: FIX-00 ~ FIX-19)
+   └── Fix & Re-audit
+      └── review/auto-fix-guide.md (FIX-00 ~ FIX-29; dedupe by symptom, no parallel conflicting fixes)
 ```
+
+### Two-Phase Review
+
+| Phase | When | Scope | Focus |
+|-------|------|--------|--------|
+| **A — First-output / runtime** | After first scaffold or first full code dump | All new/touched plugin files | Load/run CRITICALS only path: imports, async, handlers, config inject, metadata name/author, schema, requirements, forbidden APIs |
+| **B — Full product** | Features done, large change set, or user says review/audit/校验/审核 | **Entire** plugin tree | Accuracy, security, completeness + all Phase A checks |
+
+Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist` → `general-file-checklist` → report → fix via `auto-fix-guide` → re-audit.
 
 ### Review Triggers
 
-| Trigger | Scope |
-|---------|-------|
-| Code generated or modified | Full pipeline on changed files |
-| User requests "review"/"audit"/"校验"/"审核" | Full pipeline on **ALL** files |
-| LLM iterating on fixes (internal) | Incremental on changed files; final delivery must pass full |
+| Trigger | Phase | Scope |
+|---------|-------|--------|
+| First plugin scaffold generated | **A** | All new files (mandatory, no skip) |
+| Incremental feature edits | **A** on changed files + known CRITICAL classes | Prefer minimal diff |
+| Feature complete / "review" request | **B** | **ALL** files |
+| Internal fix loop | Incremental | Final handoff still needs Phase A clean; user audit needs Phase B |
 
 ### Review Principles
 
-1. **Official docs are authoritative** — during review, verify all API calls against official AstrBot docs (Step 0.5). When skill rules conflict with official docs, defer to official docs.
-2. **Report only issues** — skip passing checks in output. If no issues: `✅ PASS — 0 issues in N files.`
-3. **Severity levels**: 🔴 CRITICAL (must fix) / 🟡 WARNING (strongly recommend) / 🔵 INFO (optional)
-4. **Conclusion**: ✅ PASS (0 critical, ≤2 warnings) / ⚠️ CONDITIONAL PASS (0 critical, warnings) / ❌ FAIL (critical exist)
+1. **Official docs + current version behavior are authoritative** — re-verify APIs against `star/plugin-new.md` + relevant guides; defer to official docs on conflict. Do **not** treat legacy `plugin.md` as source.
+2. **Also verify runtime behaviors** (v4.26.x+): plugin enable ≠ tool enable; uninstall clears plugin KV; schema may have UTF-8 BOM; handler binding is idempotent (still avoid double-register).
+3. **Phase A fails closed** — do not claim "ready to install" if any 🔴 remains.
+4. **Report only issues** — skip passing checks. If none: `✅ PASS — Phase A/B — 0 issues in N files.`
+5. **Severity**: 🔴 CRITICAL / 🟡 WARNING / 🔵 INFO
+6. **Conclusion**: ✅ PASS (0 critical, ≤2 warnings) / ⚠️ CONDITIONAL / ❌ FAIL
 
 ### Output Format
 
@@ -283,15 +309,20 @@ review/review-workflow.md (orchestrator)
 - Bridge API: `onContext()`, NOT `onContextChange()` <!-- Source: guides/plugin-pages.md -->
 - Bridge endpoint: no `/` prefix, no `..`, query via `params` <!-- Source: guides/plugin-pages.md -->
 
-### Project & Review
+### Project, Gates & Review
 
-- After generating/modifying code, must execute review workflow
-- User requests "review"/"audit" → full pipeline on ALL files
-- Before review, validate metadata.yaml
-- First generation: `repo` empty, text matches user language
+- **Identity gate**: before scaffold, confirm plugin `name` = `astrbot_plugin_<slug>` and `author` with the user
+- After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable
+- After features complete or user audit request, run **Phase B** full-tree review (accuracy, security, completeness)
+- User requests "review"/"audit"/"校验"/"审核" → **Phase B** on ALL files
+- Before review, validate metadata.yaml (`name`/`author` match confirmation)
+- First generation: `repo` empty, user-facing text matches user language
 - `requirements.txt` must list all third-party deps, no `astrbot`/`quart`
 - After splitting main.py, verify all import paths
-- Sensitive ops (git push, delete) require user confirmation
+- **High-risk ops require explicit user approval before execution** — never do these until the user clearly allows:
+  - `git commit`, `git push`, `git push --force` / force-with-lease, `git amend` of shared commits
+  - Deleting repos/files en masse, publishing/releasing packages
+  - **Large rewrites** of code that already runs (prefer minimal patches unless user asks for refactor)
 - Use ruff to format before submission <!-- Source: plugin-new.md -->
 - Do NOT use `requests` for network requests — use `aiohttp` or `httpx` (async) <!-- Source: plugin-new.md -->
 - Store persistent data in `data/` directory (via `StarTools.get_data_dir()`), NOT in the plugin's own directory — prevents data loss on reinstall <!-- Source: plugin-new.md -->
@@ -302,6 +333,10 @@ review/review-workflow.md (orchestrator)
 - `support_platforms` field: list of platform keys (e.g., `telegram`, `discord`, `aiocqhttp`) <!-- Source: plugin-new.md -->
 - `astrbot_version` field: PEP 440 format, no `v` prefix (e.g., `>=4.16,<5`) <!-- Source: plugin-new.md -->
 - `skills/` directory: bundle Skill definitions with plugin; auto-registered by AstrBot <!-- Source: plugin-new.md -->
+- Plugin enabled ≠ every LLM tool enabled — WebUI can disable tools independently (≥4.26.0 / 4.26.2) <!-- Source: releases -->
+- Plugin uninstall clears plugin KV storage (≥4.26.2) — do not assume KV survives uninstall <!-- Source: releases -->
+- `_conf_schema.json` may include UTF-8 BOM (≥4.26.7); still prefer UTF-8 without BOM for editors <!-- Source: releases -->
+- Prefer official recommended Python **3.12** for development; skill minimum remains 3.10 for tooling <!-- Source: docs 4.26.2 -->
 
 ---
 
@@ -311,9 +346,11 @@ This skill contains 50+ files. Reading all of them wastes tokens. Follow these r
 
 ### Reading Priority (Tiered)
 
-**Tier 0 — Official docs** (mandatory, targeted by type):
-- `https://github.com/AstrBotDevs/AstrBot/tree/master/docs/en/dev/star/guides`
-- Platform adapters MUST use: `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
+**Tier 0 — Official docs** (mandatory):
+- Always: `star/plugin-new.md`, `star/guides/simple.md`, `star/guides/listen-message-event.md`
+- By type: other files under `docs/en/dev/star/guides/`
+- Adapters MUST: `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
+- **Ignore as authority**: `docs/en/dev/plugin.md` (legacy redirect)
 
 **Tier 1 — Core rules** (always read, ~300 lines):
 - `SKILL.md` — this file (Mandatory Rules + Workflow)

@@ -31,6 +31,8 @@ my_plugin/
 
 > ⚠️ **Namespace collision warning**: Names like `services/`, `handlers/`, `models/` are generic. In multi-plugin environments, AstrBot adds all plugin dirs to `sys.path`, so `from services.xxx import ...` may find another plugin's `services/`. Add `sys.path.insert(0, os.path.dirname(__file__))` at the top of `main.py` before any sub-package imports.
 
+> **v4.26.0+**: Core improved `handler_module_path` consistency for tools in subdirectories. Prefer clear packages and register tools once. **v4.26.7+**: handler binding is idempotent (avoids duplicate `self`), but still do not intentionally double-register.
+
 ## What Stays in main.py
 
 main.py keeps **only** these responsibilities:

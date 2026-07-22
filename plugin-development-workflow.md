@@ -1,5 +1,18 @@
 # Plugin Development Workflow
 
+## 0. Identity Gate (before any files)
+
+**Stop and confirm with the user** (do not invent):
+
+1. **Plugin name** (folder + `metadata.yaml` `name`): `astrbot_plugin_<slug>`  
+   - Regex: `^astrbot_plugin_[a-z0-9_]+$`  
+   - Lowercase only; no hyphens/spaces
+2. **Author** string for `metadata.yaml`
+
+Example prompt: “插件名确认 `astrbot_plugin_xxx`？作者确认 `YourName`？”
+
+Only after confirmation, create the directory named exactly as `name`.
+
 ## 1. Project Scaffold
 
 Standard AstrBot plugin directory structure:
@@ -187,7 +200,17 @@ aiohttp
 - Log via `astrbot.api.logger`
 - When debugging message parsing, check `event.message_obj.message` and `event.message_obj.raw_message`
 - Test: command registration, default config values, permissions, reload/unload, platform component compatibility
-- After completion, execute the review workflow: `review/review-workflow.md`
+- **Runtime path**: AstrBot loads from its **plugin install directory**, not arbitrary worktrees — sync files or reinstall/reload after edits
+- **Local install** (≥4.26.3): core supports installing local plugins with source validation
+- If LLM tools never run: check WebUI tool enable/permission (separate from plugin enable, ≥4.26.x)
+- After unload: KV for the plugin may be cleared (≥4.26.2)
+
+### Review gates (mandatory)
+
+1. **After first scaffold**: Phase A runtime review (`review/review-workflow.md`) on all new files — fix all 🔴 before claiming it can load
+2. **After features complete / user asks 审核**: Phase B full-tree review
+3. Prefer minimal diffs on already-running code unless user explicitly wants a large refactor
+4. **Never** `git commit` / `git push` / force-push without explicit user approval
 
 ## When to Split main.py
 

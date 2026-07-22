@@ -28,13 +28,17 @@ from astrbot.api import logger
 - **未使用 import / 死代码**：LLM 常生成不需要的 import 和未使用的变量
 - **StarTools 调用限制**：`get_data_dir()` 必须在 `Star` 子类中调用，Service/Manager 类不能直接调用
 - **命名空间冲突**：`services/`、`handlers/` 等通用包名在多插件环境下会冲突
+- **插件与工具开关分离**（≥4.26.x）：插件启用 ≠ 每个 LLM Tool 启用
+- **卸载清 KV**（≥4.26.2）：卸载后插件 KV 会被清理
 
 ## 核心工作流
 
 ```
 Step 0:   理解意图
   ↓
-Step 0.5: 读取官方必读文档（3 个文件）
+Step 0.2: 确认插件名（astrbot_plugin_*）与作者 — 未确认不得脚手架
+  ↓
+Step 0.5: 读取官方必读文档（plugin-new + simple + listen-message-event）
   ↓
 Step 1:   选择插件类型
   ↓
@@ -44,14 +48,17 @@ Step 2:   脚手架 + 实现
   ↓
 Step 2.5: 代码清理（未使用 import、死代码、重复定义）
   ↓
-Step 3:   校验 metadata.yaml
+Step 3:   校验 metadata.yaml（与已确认 name/author 一致）
   ↓
-Step 4:   审核（官方文档 + Skill 规则）
+Step 4A:  首次输出审查（运行时门禁，防第一次安装就炸）
   ↓
-Step 5:   修复 → 重新审核 → 交付
+Step 4B:  功能完成后全文审查（准确 / 安全 / 完整）或用户要求审核时
+  ↓
+Step 5:   修复 → 重新审查 → 交付
 ```
 
-> 官方文档是权威来源，Skill 内容是补充。两者冲突时以官方文档为准。
+> 官方文档（`star/plugin-new.md` + `star/guides/*`）是权威来源；**不要**把旧 `plugin.md` 当权威。Skill 为补充；冲突时以官方为准。  
+> **高风险操作**（git commit / push / force、大规模改写已可运行代码）必须用户明确允许后再执行。
 
 ### 意图判断
 
@@ -84,8 +91,13 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 
 | 规则 | 说明 |
 |------|------|
-| 官方文档优先 | 代码生成前必须先从 GitHub 读取官方文档，不要依赖缓存知识 |
-| docstring | 所有 `@filter.command` 方法必须有 docstring，WebUI 会展示 |
+| 身份门禁 | 脚手架前必须确认插件名 `astrbot_plugin_*` 与作者，未确认不得创建目录 |
+| 官方文档优先 | 以 `star/plugin-new.md` + `star/guides/*` 为准；**禁止**旧 `plugin.md` 当权威 |
+| 两阶段审查 | 首次输出：Phase A 运行时全文校对；功能完成/用户审核：Phase B 全文准确·安全·完整 |
+| 高风险操作 | git commit/push/force、大规模改写已运行代码、批量删除 — 须用户明确允许 |
+| 插件与工具开关分离 | ≥4.26.x 插件启用 ≠ 每个 LLM Tool 启用 |
+| 卸载与 KV | ≥4.26.2 卸载会清理插件 KV |
+| docstring | 所有 `@filter.command` 必须有 docstring |
 | 参数绑定 | 用 `event.message_str.strip()` 获取用户输入，不要用函数参数 |
 | command_group | 必须用函数模式 `def math(): pass`，不能用 class |
 | Tool 返回值 | `Tool.call()` 必须返回 `str`，不要用 `ToolExecResult` |
@@ -252,8 +264,8 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install mcp pyyaml uvicorn star
 
 ## 版本要求
 
-- AstrBot >= 4.16
-- Python >= 3.10
+- AstrBot: skill 规则兼容 **≥4.16**；开发时建议跟进 **≥4.26.x**（工具权限、KV 卸载、schema BOM 等行为）
+- Python: 工具链 **≥3.10**；官方文档侧倾向 **3.12**（推荐）
 
 ## 相关链接
 

@@ -128,6 +128,13 @@ See `platform_adapters/adapter_interface.md` § "config_metadata" for full rules
 - [ ] `context.get_platform()` NOT used — use `context.get_platform_inst(platform_id)` (v4.0.0+)
 - [ ] `@filter.llm_tool` docstring `Args:` follows `param_name(type): description` format
 
+### Runtime Behavior Checks (≥4.26.x awareness)
+
+- [ ] If tools never fire: document/check WebUI **per-tool** enable/permission (plugin enable alone is not enough)
+- [ ] Do not document KV as surviving uninstall (cleared on uninstall ≥4.26.2)
+- [ ] Modular tools under subpackages: clear module paths; avoid double-binding handlers (core binding is idempotent ≥4.26.7, still prefer clean registration)
+- [ ] Config schema: UTF-8 BOM acceptable ≥4.26.7
+
 ## File Priority for Review
 
 When reviewing multiple files, prioritize:

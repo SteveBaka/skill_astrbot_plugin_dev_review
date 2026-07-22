@@ -6,7 +6,8 @@ AstrBot supports plugins exposing Dashboard pages through the `pages/` directory
 
 > For simple configuration items, prefer `_conf_schema.json`. Plugin Pages are more suitable for complex forms, dashboards, logs, file upload/download, SSE, and custom interactions.
 
-> **v4.25.3+**: Plugin pages now automatically appear in the Dashboard sidebar with MDI icon support. Pages also sync with the Dashboard theme (dark/light mode) automatically.
+> **v4.25.3+**: Plugin pages appear in the Dashboard sidebar (MDI icons) and sync Dashboard theme.
+> **v4.26.0+**: Plugin page asset token fallback improved — prefer relative static paths as documented.
 
 ## Directory Structure
 

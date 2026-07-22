@@ -67,6 +67,18 @@ class MyPlugin(Star):
 
 > ⚠️ `context.register_llm_tool()` is **DEPRECATED**. Do not use in new plugins. Use `add_llm_tools()` instead. <!-- Source: guides/ai.md WARNING -->
 
+### Plugin Enable ≠ Tool Enable (≥ v4.26.0 / v4.26.2)
+
+- Registering a tool does **not** guarantee it is available in every chat.
+- WebUI can manage **per-tool** permission / activation separately from the plugin toggle.
+- If the model never calls your tool, check:
+  1. Plugin is enabled
+  2. Tool is enabled / allowed in WebUI tools panel
+  3. Persona tool list is not empty-restricting (persona `tools=[]` disables all)
+  4. Docstring `Args:` format (decorator tools) or `parameters` schema (class tools)
+
+Official: `docs/en/dev/star/guides/ai.md` + runtime WebUI tool panel.
+
 ## Method 2: Decorator (Backward Compatible)
 
 ```python
