@@ -1,5 +1,21 @@
 # MCP Server Setup
 
+## Authority
+
+| Source | Role |
+|--------|------|
+| **This file (`mcp/SETUP.md`)** | MCP install & client config **source of truth** |
+| `README.md` § MCP | Chinese quick start only; must match this file |
+| Working client config | Runtime proof (e.g. `~/.config/kilo/kilo.jsonc`) |
+
+**Required launch shape (all stdio clients):**
+
+1. **Absolute** path to venv `python3`
+2. **Absolute** path to `mcp/server.py` (do **not** use bare `server.py`)
+3. **Absolute** `cwd` pointing at the `mcp/` directory
+
+Why: some hosts (notably Kilo) spawn the process from the **workspace / project root** and resolve the script argument relative to that root, **not** relative to `cwd`. Relative `server.py` then becomes `<project>/server.py` (missing) → process exits → `MCP error -32000: Connection closed`.
+
 ## 1. Create venv and install dependencies
 
 ```bash
@@ -8,12 +24,18 @@ python3 -m venv .venv
 .venv/bin/pip install mcp pyyaml uvicorn starlette
 ```
 
-> Requires Python 3.10+. If your system Python is older, use the Python from astrbot-mcp's venv:
+> Requires Python 3.10+. If your system Python is older, use the Python from another 3.12 venv:
 > ```bash
-> /path/to/astrbot-mcp/.venv/bin/python3.12 -m venv .venv
+> /path/to/python3.12 -m venv .venv
 > ```
 
 ## 2. Add to your MCP client config
+
+Replace `/your/actual/path/skill_astrbot_plugin_dev_review` with the real absolute skill root.
+
+### Kilo CLI / global (`~/.config/kilo/kilo.jsonc`)
+
+`command` is a single array: `[python, server.py]`.
 
 ```json
 {
@@ -22,7 +44,7 @@ python3 -m venv .venv
       "type": "local",
       "command": [
         "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/.venv/bin/python3",
-        "server.py"
+        "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/server.py"
       ],
       "cwd": "/your/actual/path/skill_astrbot_plugin_dev_review/mcp",
       "enabled": true
@@ -31,19 +53,47 @@ python3 -m venv .venv
 }
 ```
 
+### Kilo / VS Code extension (`mcp_settings.json`)
+
+Uses `command` + `args` (not a single array):
+
+```json
+{
+  "mcpServers": {
+    "skill-astrbot-plugin": {
+      "command": "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/.venv/bin/python3",
+      "args": [
+        "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/server.py"
+      ],
+      "cwd": "/your/actual/path/skill_astrbot_plugin_dev_review/mcp",
+      "disabled": false
+    }
+  }
+}
+```
+
+Typical path:  
+`~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/settings/mcp_settings.json`  
+(or the equivalent Cursor/globalStorage path for your editor).
+
+### Other clients (Claude Desktop / Cursor / Windsurf)
+
+Prefer the same **absolute python + absolute server.py + cwd**. Map fields to that client’s schema (`command`/`args` vs array). Do not rely on relative `server.py` + `cwd` alone unless you have verified that client resolves scripts against `cwd`.
+
 Config file locations:
 
 | Client | Path |
 |--------|------|
-| Kilo | `~/.config/kilo/kilo.jsonc` |
+| Kilo CLI | `~/.config/kilo/kilo.jsonc` |
+| Kilo extension | `.../globalStorage/kilocode.kilo-code/settings/mcp_settings.json` |
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | Cursor | `~/.cursor/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-| VS Code | `~/.vscode/mcp.json` |
+| VS Code user MCP | `~/.vscode/mcp.json` or Code `User/mcp.json` (may be separate from Kilo extension settings) |
 
 ## 3. Verify
 
-Restart your MCP client. You should see 6 tools:
+Restart your MCP client (or Reload Window). You should see **6 docs tools** always, plus **runtime tools** when the server starts (runtime needs env for live calls):
 
 | Tool | Description |
 |------|-------------|
@@ -53,21 +103,227 @@ Restart your MCP client. You should see 6 tools:
 | `search_docs(query)` | Search all documents by keyword |
 | `validate_import(symbol)` | Check if an AstrBot import path is correct |
 | `get_review_checklist(file_type)` | Get review checklist (main/general/metadata/adapter) |
+| `astrbot_runtime_info` | **[P0]** Config + optional OpenAPI probe (no token leak) |
+| `astrbot_plugin_list` | **[P0]** GET `/api/v1/plugins` (read-only) |
+| `astrbot_plugin_failed` | **[P0]** GET `/api/v1/plugins/failed` (read-only) |
+| `astrbot_plugin_get` | **[P0]** GET `/api/v1/plugins/{plugin_id}` (read-only) |
+| `astrbot_plugin_config_get` | **[P1]** GET plugin config (read; optional redact) |
+| `astrbot_plugin_config_schema` | **[P1]** GET plugin config schema (read) |
+| `astrbot_plugin_config_set` | **[P1]** PUT plugin config (**mutations**) |
+| `astrbot_plugin_set_enabled` | **[P1]** PATCH enable/disable (**mutations**) |
+| `astrbot_plugin_reload` | **[P1]** POST reload (+ failed endpoint) (**mutations**) |
+| `astrbot_plugin_uninstall` | **[P2]** DELETE uninstall (**mutations** + confirm; **default keep config/data**) |
+| `astrbot_plugin_pack_preview` | **[P2]** Dry-run local ZIP pack (gitignore; **no upload**) |
+| `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → `install/upload` → enable → reload → failed (**mutations**) |
+| `astrbot_providers_brief` | **[P2.5]** Provider id/name list (no secrets) |
+| `astrbot_config_profiles_brief` | **[P2.5]** Profile names/ids only |
+| `astrbot_post_install_hints` | **[P2.5]** Dashboard checklist (no config reads) |
+| `astrbot_ensure_plugin_dev_skill` | **[P2.5]** Create `plugin_dev_skill` from default (**mutations** + confirms) |
+| `astrbot_chat_sessions_brief` | **[P3]** List WebChat sessions metadata (chat scope) |
+| `astrbot_chat_probe` | **[P3]** Opt-in SSE smoke via `POST /chat` (**confirm_probe**; fixed reusable smoke session) |
+| `astrbot_chat_sessions_cleanup` | **[P3]** Delete **webchat-only** sessions (**mutations** + confirm; cannot delete Dashboard-user sessions) |
+
+CLI check (if `kilo` is installed):
+
+```bash
+kilo mcp list
+```
+
+Expect `skill-astrbot-plugin` **connected**. Server stderr may show `ListToolsRequest`.
+
+## 3.1 Runtime env (optional — LAN AstrBot)
+
+> **Docs MCP does not need these.** Empty `ASTRBOT_BASE_URL` ⇒ runtime tools return `not_configured`; docs tools stay healthy.
+
+Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / `mcp_settings.json`), never commit secrets into this repo.
+
+| Env | Required | Meaning |
+|-----|----------|---------|
+| `ASTRBOT_BASE_URL` | for runtime | e.g. `http://192.168.1.50:6185` (AstrBot on **another LAN device** — do not use that device's `localhost` from Kilo's machine) |
+| `ASTRBOT_TOKEN` | if instance requires auth | Dashboard API key / token (sent as `X-API-Key` by default; **chat** scope needed for chat_probe) |
+| `ASTRBOT_AUTH_MODE` | no | `api_key` (default) \| `bearer` \| `auto` |
+| `ASTRBOT_HTTP_TIMEOUT` | no | seconds, default `15` (raise on slow NAS/VPN; upload/chat may need more) |
+| `ASTRBOT_ALLOW_MUTATIONS` | no | default off; `true` enables reload / set_enabled / config_set / install / uninstall / ensure_plugin_dev_skill |
+| `ASTRBOT_ALLOW_CHAT_PROBE` | no | default off; allows chat_probe without per-call `confirm_probe` |
+| `ASTRBOT_CHAT_USERNAME` | for chat_probe | default WebChat username |
+| `ASTRBOT_CHAT_CONFIG_NAME` | no | default `plugin_dev_skill` |
+| `ASTRBOT_CHAT_SMOKE_SESSION_ID` | no | fixed smoke session id (default `mcp-smoke-<username>`) |
+
+### Example `kilo.jsonc` fragment (paths absolute; env for LAN)
+
+```jsonc
+"skill-astrbot-plugin": {
+  "type": "local",
+  "command": [
+    "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/.venv/bin/python3",
+    "/your/actual/path/skill_astrbot_plugin_dev_review/mcp/server.py"
+  ],
+  "cwd": "/your/actual/path/skill_astrbot_plugin_dev_review/mcp",
+  "enabled": true,
+  "env": {
+    // 局域网 AstrBot 根地址（跨设备写主机 IP:端口）
+    "ASTRBOT_BASE_URL": "http://192.168.x.x:6185",
+    // Dashboard API Key（chat_probe 需含 chat 权限；勿提交仓库）
+    "ASTRBOT_TOKEN": "your-api-key",
+    // 鉴权方式：api_key（默认）| bearer | auto
+    "ASTRBOT_AUTH_MODE": "api_key",
+    // HTTP 超时秒数（上传/对话可调高）
+    "ASTRBOT_HTTP_TIMEOUT": "20",
+    // 允许写操作：reload/启停/配置/安装/卸载/建 plugin_dev_skill
+    "ASTRBOT_ALLOW_MUTATIONS": "true",
+    // 允许不经 confirm_probe 调 chat_probe（默认建议 false）
+    "ASTRBOT_ALLOW_CHAT_PROBE": "false",
+    // WebChat 发送者用户名（chat_probe）
+    "ASTRBOT_CHAT_USERNAME": "your_webchat_user",
+    // chat_probe 默认配置档案名
+    "ASTRBOT_CHAT_CONFIG_NAME": "plugin_dev_skill"
+  }
+}
+```
+
+### Connectivity check order
+
+1. Restart MCP client after env change.
+2. Call `astrbot_runtime_info` → expect `connection: "ok"` and `probe.summary.plugin_count`.
+3. If `error_kind=connect|timeout`: fix IP/port/firewall/AstrBot process (LAN).
+4. If `error_kind=auth`: set/fix `ASTRBOT_TOKEN` / try `bearer`.
+5. Then `astrbot_plugin_list` / `astrbot_plugin_failed`.
+
+### Plugin manage flow (P1)
+
+```
+list/get → config_get → (optional config_set) → set_enabled → reload → failed probe
+```
+
+| Result | Meaning |
+|--------|---------|
+| `mutations_disabled` | Gate closed; OpenAPI write **not** called. Set `ASTRBOT_ALLOW_MUTATIONS=true` + restart MCP. |
+| reload `ok` + empty failed | Plugin reloaded cleanly |
+| reload `ok` + still in failed | Load error — fix code, reload again |
+| `http_status` 4xx/5xx | Auth/body/id wrong — see response `data` |
+
+### Local install / update — Scheme A (recommended)
+
+```
+edit source on MCP host machine
+  → astrbot_plugin_pack_preview(path)   # optional
+  → astrbot_plugin_install_path(path)   # zip + upload + enable + reload + failed
+```
+
+| Detail | Behavior |
+|--------|----------|
+| ZIP file name | From `metadata.yaml`: `{name}-{version}.zip` (fallback `{name}.zip`) |
+| ZIP root folder | Prefers `metadata.name`; else directory basename |
+| Required files | `metadata.yaml`, `main.py` |
+| Excludes | Plugin/parent `.gitignore` + hard list (`.git`, `.venv`, `__pycache__`, `node_modules`, …) |
+| API | `POST /api/v1/plugins/install/upload` multipart field `file` |
+| Update loop (**primary**) | Re-run `install_path` after edits — **no uninstall** |
+| Same-name conflict (**fallback**) | If upload conflicts with already-installed plugin: uninstall with `keep_config=true` + `keep_data=true` (never delete config/data by default), then `install_path` again |
+| Gate | `ASTRBOT_ALLOW_MUTATIONS=true` |
+| Timeout | Upload uses ≥60s or `ASTRBOT_HTTP_TIMEOUT` if higher |
+
+**Result analysis:** `success=true` and `plugin_in_failed=false` means load OK. `pack_failed` / `not_a_plugin` = fix local path structure before retry. `same_name_conflict_suspected=true` → use fallback uninstall-keep-then-install only after primary re-upload fails.
+
+### Dev profile `plugin_dev_skill` (P2.5)
+
+```
+astrbot_providers_brief          # user picks provider_id
+astrbot_config_profiles_brief    # see if plugin_dev_skill exists
+astrbot_ensure_plugin_dev_skill(plugin_id, provider_id, confirm_create=true, exist_policy=...)
+→ user: Dashboard WebChat → select plugin_dev_skill
+```
+
+| Rule | Behavior |
+|------|----------|
+| Base | Deep copy of **default** profile config (server-side) |
+| Overrides | `plugin_set=[plugin_id(+extras)]`, `default_provider_id=user choice` |
+| Output | **Never** returns full config body |
+| Exists | User chooses `abort` / `recreate` (+ delete confirm) / `rename_old` |
+| Chat smoke | **Not** done by this tool; MCP auto-chat only if user later allows |
+| Privacy | No auto `plugin_config_get`; install only attaches Dashboard hints |
+
+### Chat probe (P3) — opt-in smoke
+
+```
+# After user explicitly allows MCP smoke:
+astrbot_chat_probe(
+  message="/ttsinfo",
+  username="your_webchat_user",
+  config_name="plugin_dev_skill",
+  confirm_probe=true
+)
+```
+
+| Rule | Behavior |
+|------|----------|
+| Gate | `confirm_probe=true` **or** env `ASTRBOT_ALLOW_CHAT_PROBE=true` |
+| API key | Must include **chat** scope (else 403) |
+| username | Required (`username` arg or `ASTRBOT_CHAT_USERNAME`) |
+| config | Default `config_name=plugin_dev_skill` (or `ASTRBOT_CHAT_CONFIG_NAME` / `config_id`) |
+| session | **Fixed reusable smoke session** (default `mcp-smoke-<username>`; override via `session_id` arg or `ASTRBOT_CHAT_SMOKE_SESSION_ID`); server auto-creates it, all probes land in one stable Dashboard WebChat entry |
+| Response | SSE (`data: {...}`); tool returns truncated `plain_texts` / `records` |
+| Privacy | No transcript files; main test remains Dashboard WebChat |
+
+Env extras: `ASTRBOT_ALLOW_CHAT_PROBE`, `ASTRBOT_CHAT_USERNAME`, `ASTRBOT_CHAT_CONFIG_NAME`, `ASTRBOT_CHAT_SMOKE_SESSION_ID`.
+
+### Session cleanup (P3) — webchat-only, verified limits
+
+`astrbot_chat_sessions_cleanup` deletes WebChat sessions with a hard privacy gate: every id must verify as a **webchat-platform** session of the given username (other platforms → `scope_violation`, whole call refused). Requires `ASTRBOT_ALLOW_MUTATIONS=true` + `confirm_cleanup=true`, hard cap `max_delete`.
+
+**Known limit (source-verified 2026-07):** AstrBot checks `session.creator == auth identity`, and API-key identity is `api_key:<key_id>` — so sessions created by Dashboard users always return `Permission denied` via API key; delete those in Dashboard WebChat. Do **not** work around this by granting system scope; the fixed-session probe design makes cleanup mostly unnecessary.
+
+### Uninstall safety (P2) — keep by default
+
+OpenAPI body: `{ "delete_config": bool, "delete_data": bool }`.
+
+| Rule | Behavior |
+|------|----------|
+| Ask user | Keep config? Keep persistent data? |
+| No answer | **Keep both** (`keep_config=true`, `keep_data=true` → API `delete_*=false`) |
+| Never silent wipe | `delete_config`/`delete_data` true only after explicit user OK |
+| Tool gates | `confirm_uninstall=true` required for any uninstall; if deleting config/data, also `confirm_delete_config` / `confirm_delete_data` |
+| Soft refuse | `error_kind=confirm_required` / `delete_*_confirm_required` → **API not called** |
+
+Agent must not uninstall production plugins during routine tests; use a dedicated sandbox only with user permission.
+
+**Not done yet:** local log tail (P4).
+
+**Result analysis (P0):** success only means OpenAPI control plane is reachable and auth works.  
+**Result analysis (P1):** manage tools change live AstrBot state; use deliberately on LAN instances.  
+**Result analysis (P2 uninstall):** soft refuse means safety gate worked; hard `ok` means plugin removed with the `kept` flags in the response.
+
+## 3.2 Maintenance (dev)
+
+- **Unit tests** (`mcp/tests/`, no AstrBot needed; env auto-cleared):
+  `.venv/bin/pytest tests/` — covers zip_pack exclusions/naming, config gates,
+  chat SSE/session policy, client auth/errors. Fixture plugin:
+  `plugin-types/type2-session-waiter`.
+- **OpenAPI drift check** (`mcp/scripts/check_openapi_drift.py`):
+  live source `https://docs.astrbot.app/openapi.json` (the scalar.html data URL;
+  `info.version` is pinned 0.1.0 — drift is by ETag/content, never version).
+  `python3 mcp/scripts/check_openapi_drift.py` → exit 0 no drift / 1 runtime
+  endpoints affected (fix `mcp/runtime` first) / 2 drift elsewhere only.
+  `--update` refreshes the local snapshot (`AstrBot OpenAPI v1.json`, gitignored);
+  `--offline` validates runtime paths against the snapshot without network.
+  Run after each AstrBot release.
 
 ## 4. SSE Mode (optional)
 
-For MCP clients that don't support stdio, run in SSE mode:
+For MCP clients that don't support stdio:
 
 ```bash
 MCP_TRANSPORT=sse MCP_PORT=3000 .venv/bin/python3 server.py
 ```
 
-Then configure your client to connect to `http://localhost:3000/sse`.
+Client URL: `http://localhost:3000/sse`.
 
 ## Troubleshooting
 
-**"Executable not found: python3"**: Use the full absolute path to `.venv/bin/python3`.
-
-**"ModuleNotFoundError: mcp"**: Make sure you're using the venv Python, not system Python.
-
-**Tools not appearing**: Check that `cwd` points to the `mcp/` directory.
+| Symptom | Fix |
+|---------|-----|
+| `MCP error -32000: Connection closed` | Almost always: process exited. Use **absolute** `server.py`. Check host logs for `can't open file '.../server.py'`. |
+| `can't open file '.../server.py'` (under project root, not `mcp/`) | Relative script was resolved from workspace root; switch to absolute path to `mcp/server.py`. |
+| `Executable not found: python3` | Use full absolute path to `.venv/bin/python3`. |
+| `ModuleNotFoundError: mcp` | Use venv Python, not system Python; re-run step 1. |
+| Tools not appearing | Confirm `cwd` is the `mcp/` directory; restart client; confirm both paths exist. |
+| Extension red / CLI green | Align **extension** `mcp_settings.json` to the same absolute python + absolute `server.py` as `kilo.jsonc`. |

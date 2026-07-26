@@ -12,10 +12,9 @@ Usage:
     MCP_TRANSPORT=sse MCP_PORT=3000 python mcp/server.py
 """
 
-import asyncio
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 from mcp.server.fastmcp import FastMCP
 
@@ -320,6 +319,25 @@ def get_review_checklist(file_type: str = "main") -> str:
     if key in checklists:
         return checklists[key]
     return f"Unknown file_type: '{file_type}'. Available: {', '.join(checklists.keys())}"
+
+
+# ── Optional Runtime tools (P0 OpenAPI read-only) ──────────────
+# [RUNTIME] Additive only: docs tools above are unchanged.
+# If runtime package or httpx fails, Docs MCP must still start (stdio handshake).
+# LAN: configure ASTRBOT_BASE_URL / ASTRBOT_TOKEN on MCP host env, not here.
+try:
+    # Ensure `import runtime` resolves when process cwd is not mcp/ (Kilo spawn).
+    if SCRIPT_DIR not in sys.path:
+        sys.path.insert(0, SCRIPT_DIR)
+    from runtime.register import register_runtime_tools
+
+    register_runtime_tools(mcp)
+except Exception as _runtime_exc:  # noqa: BLE001 — never block docs MCP
+    # stderr only: stdout is MCP JSON-RPC in stdio mode
+    print(
+        f"[skill-astrbot-plugin] runtime tools not loaded (docs OK): {_runtime_exc!r}",
+        file=sys.stderr,
+    )
 
 
 # ── Entry Point ────────────────────────────────────────────────

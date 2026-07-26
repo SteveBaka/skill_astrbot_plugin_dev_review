@@ -323,6 +323,37 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   - `git commit`, `git push`, `git push --force` / force-with-lease, `git amend` of shared commits
   - Deleting repos/files en masse, publishing/releasing packages
   - **Large rewrites** of code that already runs (prefer minimal patches unless user asks for refactor)
+  - **Plugin uninstall** (MCP `astrbot_plugin_uninstall` or any equivalent): see **Uninstall data safety** below
+- **Uninstall data safety** (mandatory for agents using Runtime MCP or manual uninstall):
+  1. When the user asks to uninstall a plugin, **ask** whether to **keep configuration** and **keep persistent data** (`data/` / plugin data dir).
+  2. If the user does **not** answer those questions → **default KEEP both** (`delete_config=false`, `delete_data=false`).
+  3. **Never** silently delete plugin config or persistent data; only set delete flags after **explicit** user approval.
+  4. MCP tool defaults: `keep_config=true`, `keep_data=true`, `confirm_uninstall` required; deleting config/data needs extra `confirm_delete_*`.
+  5. Prefer non-destructive test sandbox `astrbot_plugin_mimo_tts` only when user allows; do not uninstall production plugins during routine MCP tests.
+  6. Note: framework may still clear **plugin KV** on uninstall (≥4.26.2) even when file data is kept — tell the user if relevant.
+- **Local install / update via Runtime MCP (Scheme A)** — preferred LAN workflow:
+  1. Plugin root must contain `metadata.yaml` + `main.py`.
+  2. `astrbot_plugin_pack_preview(path)` optional dry-run (respects `.gitignore` + hard excludes).
+  3. `astrbot_plugin_install_path(path)` → ZIP → `POST /api/v1/plugins/install/upload` → enable → reload → `failed` probe.
+  4. **Update loop (primary)**: edit on dev machine → `install_path` again (re-upload) → reload/failed (defaults on). **Do not uninstall first** when re-upload works.
+  5. ZIP **filename** is generated from `metadata.yaml`: `{name}-{version}.zip` (fallback `{name}.zip` / folder name). Archive top-level folder prefers `metadata.name`.
+  6. ZIP **contents** exclusions follow plugin/parent `.gitignore` so packages align with GitHub Download ZIP / marketplace; always drop `.git`/`.venv`/`__pycache__`/etc.
+  7. **Same-name conflict (fallback only)**: if upload fails because the plugin is already installed / name conflicts, then uninstall with **keep config + keep data** (`delete_config=false`, `delete_data=false`; MCP: `keep_config=true`, `keep_data=true`, `confirm_uninstall=true`) and run `install_path` again. Never wipe config/data unless the user explicitly approves. Prefer primary re-upload path whenever possible.
+  8. Requires `ASTRBOT_ALLOW_MUTATIONS=true`. Do not use chat `file` APIs as install channel.
+  9. Routine tests: prefer user-approved sandbox (`astrbot_plugin_mimo_tts`); do not mass-install unrelated plugins.
+- **Dev WebChat profile `plugin_dev_skill` (Runtime MCP)** — isolation for functional tests:
+  1. Do **not** use AstrBot `default` profile to validate plugin features (`plugin_set` is often empty / polluted).
+  2. Before create: list providers (`astrbot_providers_brief`), **user picks** `provider_id`; target `plugin_id` known.
+  3. `astrbot_ensure_plugin_dev_skill(plugin_id, provider_id, confirm_create=true, …)` builds from **default** config with `plugin_set=[plugin]` (+ optional extras). Never return full config body (secrets).
+  4. If profile already exists: **stop** — user chooses `exist_policy=abort|recreate|rename_old` (recreate needs `confirm_delete_existing`; deletes **profile only**, not the plugin).
+  5. After create: tell user to open **Dashboard → WebChat → select `plugin_dev_skill`** for manual testing.
+  6. MCP WebChat smoke: `astrbot_chat_probe` — **default OFF**; call only with `confirm_probe=true` after user allows (or `ASTRBOT_ALLOW_CHAT_PROBE`). Needs **chat-scoped** API key, `username`, default `config_name=plugin_dev_skill`. All probes reuse ONE fixed smoke session (`mcp-smoke-<username>`, override via `session_id` / `ASTRBOT_CHAT_SMOKE_SESSION_ID`) — a single stable Dashboard WebChat entry the user manages there; API keys **cannot** delete user-owned sessions (creator check, source-verified), so never attempt auto-deletion or system-scope workarounds. Prefer user-driven Dashboard chat for primary testing.
+  6b. `astrbot_chat_sessions_cleanup` — **webchat-platform-only** deletion with verification against the username's session list (other platforms → `scope_violation`); needs mutations + `confirm_cleanup=true` + user-reviewed list; can only delete sessions created via the API key itself.
+  7. Do **not** auto-bind global config-routes unless user explicitly requests.
+- **Privacy — configs**:
+  1. After install: only **Dashboard checklists** by plugin type (`astrbot_post_install_hints` / install response `dashboard_hints`) — **no** automatic `plugin_config_get` or full profile reads.
+  2. Agent/skill must **not** privately scan plugin or AstrBot configuration; read a value only when the user **names** the parameter/key to inspect.
+  3. Never commit tokens, full configs, or WebChat transcripts into the skill repo.
 - Use ruff to format before submission <!-- Source: plugin-new.md -->
 - Do NOT use `requests` for network requests — use `aiohttp` or `httpx` (async) <!-- Source: plugin-new.md -->
 - Store persistent data in `data/` directory (via `StarTools.get_data_dir()`), NOT in the plugin's own directory — prevents data loss on reinstall <!-- Source: plugin-new.md -->

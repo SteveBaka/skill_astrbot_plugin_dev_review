@@ -95,6 +95,10 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 官方文档优先 | 以 `star/plugin-new.md` + `star/guides/*` 为准；**禁止**旧 `plugin.md` 当权威 |
 | 两阶段审查 | 首次输出：Phase A 运行时全文校对；功能完成/用户审核：Phase B 全文准确·安全·完整 |
 | 高风险操作 | git commit/push/force、大规模改写已运行代码、批量删除 — 须用户明确允许 |
+| 卸载插件数据安全 | 卸载前须询问是否保留配置与持久化数据；**未回答则默认保留**；禁止擅自删除配置/数据 |
+| 本地安装/更新 | 方案 A：按 `.gitignore` 打 ZIP（文件名取自 metadata `name`/`version`）→ `install/upload` → enable → reload → failed；**优先重传**；同名冲突时再卸载（默认保留配置/数据）后重装 |
+| 开发测试配置 | 专用档案 `plugin_dev_skill`（基于 default，用户自选 Provider，只开当前插件）；Dashboard WebChat 主测；MCP 自动对话默认关闭 |
+| 配置隐私 | 禁止擅自读取插件/AstrBot 配置；装后仅提示前往 Dashboard；用户点名参数才可查 |
 | 插件与工具开关分离 | ≥4.26.x 插件启用 ≠ 每个 LLM Tool 启用 |
 | 卸载与 KV | ≥4.26.2 卸载会清理插件 KV |
 | docstring | 所有 `@filter.command` 必须有 docstring |
@@ -197,9 +201,28 @@ skill_astrbot_plugin_dev_review/
 │   └── astrbot-plugin-demo/              # 基础指令插件模板
 │
 └── mcp/                                  # 内置 MCP 服务器
-    ├── server.py                         # MCP 服务器（6 个工具，自动发现文档）
-    ├── requirements.txt                  # MCP 依赖
-    └── SETUP.md                          # 安装指南
+    ├── server.py                         # MCP 入口（Docs + 可选 Runtime）
+    ├── requirements.txt                  # MCP 依赖（httpx / pathspec / pytest）
+    ├── SETUP.md                          # 安装与 Runtime 权威说明
+    ├── runtime/                          # AstrBot OpenAPI 控制面（P0–P3）
+    │   ├── config.py                     # env 配置解析（安全门禁地基，密钥不回显）
+    │   ├── client.py                     # OpenAPI HTTP 客户端（鉴权/错误分类/SSE）
+    │   ├── register.py                   # 19 个 Runtime 工具注册（FastMCP）
+    │   ├── tools_impl.py                 # P0 读：runtime_info / 插件列表 / failed / 详情
+    │   ├── tools_manage.py               # P1 管：配置读写 / 启停 / 重载
+    │   ├── tools_lifecycle.py            # P2 卸载（默认保留配置/数据 + 双重确认）
+    │   ├── tools_install.py              # P2 安装（打包 → 上传 → enable → reload → failed）
+    │   ├── zip_pack.py                   # gitignore 精确打包（硬排除底线不可覆盖）
+    │   ├── tools_profile.py              # P2.5 plugin_dev_skill 档案 / Provider 清单
+    │   └── tools_chat.py                 # P3 WebChat smoke（固定会话）+ 会话清理
+    ├── tests/                            # 单元测试（66 用例，无需 AstrBot 实例）
+    │   ├── conftest.py                   # 自动清空 ASTRBOT_* env（永不误触真实实例）
+    │   ├── test_zip_pack.py              # 打包排除/命名规则（用 type2 示例插件作 fixture）
+    │   ├── test_config.py                # env 解析与安全开关默认值
+    │   ├── test_tools_chat.py            # SSE 解析 / 会话策略 / 门禁（httpx MockTransport）
+    │   └── test_client.py                # 鉴权头 / 错误分类 / 200 错误信封
+    └── scripts/
+        └── check_openapi_drift.py        # OpenAPI 契约漂移检测（对比线上 spec）
 ```
 
 完整文件地图见 `SKILL.md`。
@@ -237,30 +260,115 @@ skill_astrbot_plugin_dev_review/
 
 ## MCP 服务器（可选）
 
-内置 MCP 服务器可让 AI 助手直接查询文档和校验 import 路径，支持 6 个工具。
+内置 MCP 服务器提供：**文档/审核工具（6）** + **AstrBot Runtime 工具（19）**（OpenAPI 局域网控插件、安装、开发测试档案、可选 WebChat smoke）。权威细节见 `mcp/SETUP.md`。
 
 快速配置：
 
 ```bash
-cd mcp && python3 -m venv .venv && .venv/bin/pip install mcp pyyaml uvicorn starlette
+cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
-```json
+```jsonc
 {
   "mcp": {
     "skill-astrbot-plugin": {
       "type": "local",
-      "command": ["/实际路径/mcp/.venv/bin/python3", "server.py"],
-      "cwd": "/实际路径/mcp",
-      "enabled": true
+      // 双绝对路径：venv 的 python3 + mcp/server.py（Kilo 不会把相对 server.py 接到 cwd）
+      "command": [
+        "/实际路径/skill_astrbot_plugin_dev_review/mcp/.venv/bin/python3",
+        "/实际路径/skill_astrbot_plugin_dev_review/mcp/server.py"
+      ],
+      "cwd": "/实际路径/skill_astrbot_plugin_dev_review/mcp",
+      "enabled": true,
+      "env": {
+        // 局域网 AstrBot 根地址（跨设备请写主机 IP:端口，不要写对方机器的 localhost）
+        "ASTRBOT_BASE_URL": "http://192.168.x.x:6185",
+        // Dashboard API Key（默认请求头 X-API-Key；勿提交仓库；chat 探测需含 chat 权限）
+        "ASTRBOT_TOKEN": "your-api-key",
+        // 鉴权方式：api_key（默认）| bearer | auto
+        "ASTRBOT_AUTH_MODE": "api_key",
+        // HTTP 超时秒数（默认 15；慢盘/VPN/上传 ZIP 可调高）
+        "ASTRBOT_HTTP_TIMEOUT": "20",
+        // 允许写操作：reload / 启停 / 改配置 / 本地安装 / 卸载 / 创建 plugin_dev_skill（默认 false）
+        "ASTRBOT_ALLOW_MUTATIONS": "true",
+        // 允许不经 confirm_probe 调 chat_probe（默认 false；仍建议对话内用户明确同意后再测）
+        "ASTRBOT_ALLOW_CHAT_PROBE": "false",
+        // WebChat 发送者用户名（chat_probe 必填；可与 Dashboard 登录名一致）
+        "ASTRBOT_CHAT_USERNAME": "your_webchat_user",
+        // chat_probe 默认配置档案名（默认 plugin_dev_skill；勿依赖 default 测插件）
+        "ASTRBOT_CHAT_CONFIG_NAME": "plugin_dev_skill"
+        // 可选：smoke 固定会话 id（默认 mcp-smoke-<username>，所有 probe 复用同一条）
+        // "ASTRBOT_CHAT_SMOKE_SESSION_ID": "mcp-smoke-your_webchat_user"
+      }
     }
   }
 }
 ```
 
+> **路径必须以可用配置为准**：`python3` 与 `server.py` 均用**绝对路径**。部分客户端（如 Kilo）启动 MCP 时以工作区根目录解析相对脚本路径，**不会**把相对 `server.py` 接到 `cwd` 下，会导致 `MCP error -32000: Connection closed`。  
+> 权威说明与各客户端字段差异见 `mcp/SETUP.md`（`README` 仅给 Kilo/`kilo.jsonc` 速查模板）。
+
+### Runtime 环境变量一览
+
+| 环境变量 | 默认 | 作用 |
+|----------|------|------|
+| `ASTRBOT_BASE_URL` | 空 | 启用 Runtime；空则仅文档工具可用 |
+| `ASTRBOT_TOKEN` | 空 | API 鉴权（不回显到工具输出） |
+| `ASTRBOT_AUTH_MODE` | `api_key` | `api_key` / `bearer` / `auto` |
+| `ASTRBOT_HTTP_TIMEOUT` | `15` | 请求超时（秒）；上传/对话可能更高 |
+| `ASTRBOT_ALLOW_MUTATIONS` | `false` | 插件写操作与建开发档案总开关 |
+| `ASTRBOT_ALLOW_CHAT_PROBE` | `false` | 放宽 chat_probe 门禁（仍推荐 `confirm_probe=true`） |
+| `ASTRBOT_CHAT_USERNAME` | 空 | chat_probe 默认 username |
+| `ASTRBOT_CHAT_CONFIG_NAME` | `plugin_dev_skill` | chat_probe 默认配置档案名 |
+| `ASTRBOT_CHAT_SMOKE_SESSION_ID` | `mcp-smoke-<username>` | smoke 固定会话 id（所有 probe 复用同一条，Dashboard 可管理） |
+
+### 功能一览（工具）
+
+| 阶段 | 功能 | 代表工具 | 依赖 |
+|------|------|----------|------|
+| Docs | 文档检索、import 校验、审核清单 | `get_doc` / `validate_import` / … | 无需 AstrBot |
+| P0 | 连通探测、插件列表/失败/详情 | `astrbot_runtime_info` / `list` / `failed` / `get` | BASE_URL + Token |
+| P1 | 读改配置、启停、重载 | `config_get/set` / `set_enabled` / `reload` | + MUTATIONS（写） |
+| P2 | 本地 ZIP 安装、安全卸载 | `install_path` / `pack_preview` / `uninstall` | + MUTATIONS；卸载默认保留配置/数据 |
+| P2.5 | 开发档案 `plugin_dev_skill`、装后 Dashboard 提示 | `ensure_plugin_dev_skill` / `providers_brief` / `post_install_hints` | 建档需 MUTATIONS；**不私自读配置全文** |
+| P3 | WebChat 会话列表、可选 smoke、webchat 会话清理 | `chat_sessions_brief` / `chat_probe` / `chat_sessions_cleanup` | Token 含 **chat**；probe 需用户允许；smoke 复用固定会话 `mcp-smoke-<username>`（列表恒定一条，Dashboard 管理；API Key 无法删用户会话） |
+
+**推荐开发闭环**：改代码 → `install_path` →（按需）`ensure_plugin_dev_skill` → 用户在 Dashboard WebChat 选 **plugin_dev_skill** 自测 → 可选 `chat_probe`（`confirm_probe=true`；固定会话 `mcp-smoke-<username>`，测试记录集中一条、Dashboard 可管理）。
+
 完整安装指南、客户端配置、工具列表见 `mcp/SETUP.md`。
 
 无 MCP 也能用：按优先级读取 `SKILL.md` → 根据任务选 1-2 个文件即可。
+
+### WebChat 会话策略（P3 设计说明）
+
+经源码级验证（AstrBot `chat_service.py`）：删除会话时校验 `session.creator == 认证身份`，而 API Key 的身份是 `api_key:<key_id>`——**API Key 永远无法删除 Dashboard 用户创建的会话**。因此本 MCP 采用固定会话方案：
+
+- 所有 smoke 测试复用**同一条**会话 `mcp-smoke-<username>`，列表恒定一条、不再累积
+- 该会话归属用户本人，Dashboard WebChat 中可随时查看/删除（删除后下次 probe 自动重建）
+- `chat_sessions_cleanup` 仅能删 webchat 平台会话（其他平台一律拒绝，隐私硬边界），且仅对 API Key 自建会话有效
+- **不要**为绕过此限制给 API Key 加 system 权限——权限最小化优先
+
+## 维护（开发者）
+
+### 单元测试
+
+```bash
+cd mcp && .venv/bin/pytest tests/
+```
+
+66 个用例，无需 AstrBot 实例（conftest 自动清空 `ASTRBOT_*` env，永不误触真实服务）。覆盖：ZIP 打包排除/命名规则（以 `plugin-types/type2-session-waiter` 真实示例插件为 fixture）、env 安全开关解析、SSE 解析与固定会话策略（httpx MockTransport 模拟 HTTP）、鉴权头与"HTTP 200 错误信封"识别。
+
+### OpenAPI 契约漂移检测
+
+```bash
+python3 mcp/scripts/check_openapi_drift.py            # 常规检测
+python3 mcp/scripts/check_openapi_drift.py --update   # 刷新本地快照
+python3 mcp/scripts/check_openapi_drift.py --offline  # 离线校验 runtime ↔ 快照
+```
+
+数据源为官方 [`docs.astrbot.app/openapi.json`](https://docs.astrbot.app/scalar.html)（ETag 增量检测，未变化时 304 秒回）。脚本自动扫描 `mcp/runtime/` 中实际使用的 18 条端点，退出码：`0` 无漂移 / `1` **runtime 所用端点受影响**（先修 runtime 再信任工具）/ `2` 漂移但不涉及 runtime。**每次 AstrBot 发新版后建议跑一次**。
+
+> 本地快照 `AstrBot OpenAPI v1.json` 与 ETag sidecar 均已 gitignore，属本地开发资产。
 
 ## 版本要求
 

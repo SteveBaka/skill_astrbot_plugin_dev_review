@@ -2,3 +2,10 @@ mcp>=1.0.0
 pyyaml>=6.0
 uvicorn>=0.20.0
 starlette>=0.27.0
+# [RUNTIME P0] OpenAPI client for LAN AstrBot (docs MCP works without using it)
+httpx>=0.27.0
+# [RUNTIME P2] gitignore-accurate ZIP packing for install/upload (optional at runtime:
+# zip_pack falls back if missing, but install is recommended with pathspec)
+pathspec>=0.12.0
+# [DEV] unit tests (mcp/tests/): .venv/bin/pytest tests/
+pytest>=8.0
