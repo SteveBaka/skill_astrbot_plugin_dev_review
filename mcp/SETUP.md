@@ -332,6 +332,11 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
   `--update` refreshes the local snapshot (`AstrBot OpenAPI v1.json`, gitignored);
   `--offline` validates runtime paths against the snapshot without network.
   Run after each AstrBot release.
+  **v4.26.8 note (2026-07-30):** 145 paths, no delta vs prior snapshot for
+  runtime-used routes. Core also has `PUT /api/v1/plugins/{plugin_id}/log-level`
+  (`plugin` scope, body `{"level": "DEBUG"|…|null}`) — **not yet listed** in
+  public openapi.json; do not invent MCP tools against undocumented-only
+  routes until the published spec includes them (or pin instance version).
 
 ## 4. SSE Mode (optional)
 

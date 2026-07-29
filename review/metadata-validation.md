@@ -53,6 +53,8 @@
 
 - Must be valid JSON
 - **UTF-8 BOM is accepted by AstrBot ≥4.26.7**; prefer UTF-8 without BOM for editor portability
+- **Dict-type schema fields** get default-value mapping in core **≥4.26.8** (#9414); still declare explicit defaults and avoid shared mutable defaults in Python code (FIX-20)
+- **Marketplace package size**: published ZIP **must be ≤ 16MB** (official plugin-publish doc / Cloud CI); MCP `zip_pack` hard-excludes venv/git/cache to help stay under the limit
 - Each config item must have `type` field
 - `type` must be: `string`, `text`, `int`, `float`, `bool`, `object`, `list`, `dict`, `template_list`, `file`
 - Recommended: `description` and `default` for each item

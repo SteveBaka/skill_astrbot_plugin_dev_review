@@ -1,9 +1,10 @@
-.DS_Store
-.venv/
-__pycache__/
 *.pyc
 *.pyo
+.DS_Store
+.astrbot_openapi.etag
 .env
 .env.*
+.venv/
 AstrBot OpenAPI v1.json
-.astrbot_openapi.etag
+__pycache__/
+plugin-types/REVIEW-REPORTS.md

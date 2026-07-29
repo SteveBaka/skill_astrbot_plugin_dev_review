@@ -42,10 +42,18 @@ This directory is a **complete skill system** for AstrBot plugin development wit
 
 **By type**: other files under `docs/en/dev/star/guides/` (ai, plugin-config, plugin-pages, storage, session-control, …)
 
+**Publish / market** (authoritative for shipping):
+- `https://docs.astrbot.app/dev/star/plugin-publish.html` (Cloud: `https://cloud.astrbot.app`)
+- ZIP ≤16MB; clean package tree
+
 **Adapters MUST**:
 `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
 
+**OpenAPI**: `https://docs.astrbot.app/openapi.json` (UI: `/scalar.html`); re-check after each core release via `mcp/scripts/check_openapi_drift.py`
+
 **Do not use as authority**: `docs/en/dev/plugin.md` (legacy redirect only)
+
+**Target core for current notes**: **≥4.26.8** (recommend); skill still documents ≥4.16 floor
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
 

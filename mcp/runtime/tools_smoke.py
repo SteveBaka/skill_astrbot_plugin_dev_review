@@ -124,23 +124,55 @@ def build_smoke_cases(
     return cases[:max_cases]
 
 
+# Plain-text patterns that mean the platform/LLM failed — NOT plugin success.
+# chat_probe treats any plain as ok; smoke_suite must be stricter for commands.
+_PLATFORM_FAIL_MARKERS = (
+    "LLM 响应错误",
+    "All chat models failed",
+    "AuthenticationError",
+    "auth_unavailable",
+    "OAuth access token",
+    "Error code: 401",
+    "Error code: 403",
+    "Error code: 503",
+    "no auth",
+    "provider error",
+)
+
+
+def _looks_like_platform_failure(plains: List[str]) -> bool:
+    blob = "\n".join(plains or "").lower()
+    return any(m.lower() in blob for m in _PLATFORM_FAIL_MARKERS)
+
+
 def judge_case(probe_result: Dict[str, Any], kind: str) -> Dict[str, Any]:
     """Map one chat_probe JSON result to a pass/fail verdict."""
     summary = probe_result.get("summary") or {}
-    errors = summary.get("errors") or []
-    has_content = bool(
-        summary.get("plain_texts") or summary.get("records") or summary.get("attachments")
-    )
-    ok = bool(probe_result.get("ok"))
-    verdict = "pass" if ok else ("error" if errors else "no_content")
+    errors = list(summary.get("errors") or [])
+    plains = list(summary.get("plain_texts") or [])
+    has_content = bool(plains or summary.get("records") or summary.get("attachments"))
+    platform_fail = _looks_like_platform_failure(plains)
+    if platform_fail:
+        errors = errors + ["platform_or_llm_failure_in_plain"]
+        # Command plugins that only echo LLM auth errors did NOT run successfully
+        verdict = "platform_error"
+    elif bool(probe_result.get("ok")):
+        verdict = "pass"
+    elif errors:
+        verdict = "error"
+    else:
+        verdict = "no_content"
     # llm_tool is a soft check: content without tool evidence is not a failure
-    if kind == "llm_tool" and not ok and has_content:
+    # (but platform/LLM auth failure is still a real failure)
+    if kind == "llm_tool" and verdict == "no_content" and has_content and not platform_fail:
+        verdict = "soft_pass"
+    if kind == "llm_tool" and verdict not in ("pass", "soft_pass", "platform_error") and has_content and not platform_fail:
         verdict = "soft_pass"
     return {
         "verdict": verdict,
-        "sse_errors": errors[:2],
+        "sse_errors": errors[:3],
         "content": {
-            "plain": [p[:120] for p in (summary.get("plain_texts") or [])[:1]],
+            "plain": [p[:120] for p in plains[:1]],
             "records": (summary.get("records") or [])[:1],
             "attachments_count": len(summary.get("attachments") or []),
         },
@@ -287,23 +319,36 @@ def astrbot_smoke_suite(
 
     # ── verdict ────────────────────────────────────────────────
     passed = sum(1 for r in results if r["verdict"] in ("pass", "soft_pass"))
+    platform_fails = sum(1 for r in results if r["verdict"] == "platform_error")
     out["results"] = results
     out["summary"] = {
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,
+        "platform_or_llm_failures": platform_fails,
         "plugin_crashed_during_run": crashed,
         "elapsed_ms": round((time.time() - t0) * 1000.0, 2),
     }
+    # Plugin-load success is separate: if only platform_error, say so clearly
     out["ok"] = passed == len(results) and not crashed
+    out["plugin_loaded"] = not crashed and bool(info.get("activated"))
     out["session_note"] = (
         "All messages went to the fixed smoke session (mcp-smoke-<username>); "
         "inspect/delete it in Dashboard WebChat."
     )
     if not out["ok"]:
         fails = [r["case"] for r in results if r["verdict"] not in ("pass", "soft_pass")]
-        out["next_step"] = (
-            f"Investigate failing cases {fails}: read sse_errors/content above; "
-            "for runtime crashes see pipeline.post_run_failed (fix_rule links)."
-        )
+        if platform_fails and platform_fails == len(results) - passed and not crashed:
+            out["error_kind"] = "platform_or_llm_unavailable"
+            out["next_step"] = (
+                f"Plugin is loaded, but all replies look like LLM/auth/platform "
+                f"failures (cases {fails}). Check WebChat profile provider "
+                f"(plugin_dev_skill) and API key — not necessarily a plugin bug. "
+                f"Re-run after provider works; install/load already succeeded."
+            )
+        else:
+            out["next_step"] = (
+                f"Investigate failing cases {fails}: read sse_errors/content above; "
+                "for runtime crashes see pipeline.post_run_failed (fix_rule links)."
+            )
     return _dumps(out)

@@ -30,6 +30,9 @@ from astrbot.api import logger
 - **命名空间冲突**：`services/`、`handlers/` 等通用包名在多插件环境下会冲突
 - **插件与工具开关分离**（≥4.26.x）：插件启用 ≠ 每个 LLM Tool 启用
 - **卸载清 KV**（≥4.26.2）：卸载后插件 KV 会被清理
+- **插件市场 / 发布**（≥4.26.8）：[AstrBot Cloud](https://cloud.astrbot.app) 为新市场；发布 ZIP **≤16MB**；详见 [插件发布文档](https://docs.astrbot.app/dev/star/plugin-publish.html)
+- **配置 dict 默认值**（≥4.26.8）：核心为字典配置字段补默认值映射；schema 仍应写清 default
+- **按插件日志级别**（≥4.26.8）：Dashboard / `PUT .../plugins/{id}/log-level`（`plugin` scope）
 
 ## 核心工作流
 
@@ -101,6 +104,9 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 配置隐私 | 禁止擅自读取插件/AstrBot 配置；装后仅提示前往 Dashboard；用户点名参数才可查 |
 | 插件与工具开关分离 | ≥4.26.x 插件启用 ≠ 每个 LLM Tool 启用 |
 | 卸载与 KV | ≥4.26.2 卸载会清理插件 KV |
+| 插件发布 | Cloud 市场 + ZIP ≤16MB；metadata 完整；打包排除与 MCP `zip_pack` 一致 |
+| 配置 schema dict | ≥4.26.8 核心映射 dict 默认值；仍避免可变默认共享陷阱 |
+| 插件日志级别 | ≥4.26.8 可按插件设置 DEBUG/INFO/… 或跟随全局 |
 | docstring | 所有 `@filter.command` 必须有 docstring |
 | 参数绑定 | 用 `event.message_str.strip()` 获取用户输入，不要用函数参数 |
 | command_group | 必须用函数模式 `def math(): pass`，不能用 class |
@@ -378,14 +384,17 @@ python3 mcp/scripts/check_openapi_drift.py --offline  # 离线校验 runtime ↔
 
 ## 版本要求
 
-- AstrBot: skill 规则兼容 **≥4.16**；开发时建议跟进 **≥4.26.x**（工具权限、KV 卸载、schema BOM 等行为）
+- AstrBot: skill 规则兼容 **≥4.16**；开发/联调建议 **≥4.26.8**（Cloud 市场、dict 配置默认值、按插件日志级别、本地上传挂起修复、Cron 持久任务加载等）
 - Python: 工具链 **≥3.10**；官方文档侧倾向 **3.12**（推荐）
+- OpenAPI: 浏览 [Scalar](https://docs.astrbot.app/scalar.html)；机器可读 [openapi.json](https://docs.astrbot.app/openapi.json)。本地可用 `mcp/scripts/check_openapi_drift.py` 与快照 diff（**已验证 4.26.8 与当前 145 paths 无路径漂移**；`PUT .../log-level` 已在核心源码但**尚未**进入公开 openapi.json）
 
 ## 相关链接
 
-- [AstrBot 仓库](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot 开发文档](https://docs.astrbot.app/dev/)
-- [AstrBot 插件市场](https://github.com/AstrBotDevs/AstrBot-Plugins)
+- [AstrBot 仓库](https://github.com/AstrBotDevs/AstrBot) · [v4.26.8 发布说明](https://github.com/AstrBotDevs/AstrBot/releases/tag/v4.26.8)
+- [AstrBot 开发文档](https://docs.astrbot.app/dev/) · [从这里开始](https://docs.astrbot.app/dev/star/plugin-new.html) · [发布插件](https://docs.astrbot.app/dev/star/plugin-publish.html)
+- [AstrBot Cloud 插件市场](https://cloud.astrbot.app) · [发布页](https://cloud.astrbot.app/publish)
+- [HTTP API (Scalar)](https://docs.astrbot.app/scalar.html)
+- 历史插件列表参考：[AstrBot-Plugins](https://github.com/AstrBotDevs/AstrBot-Plugins)
 - [AstrBot-Skill 仓库](https://github.com/xunxiing/AstrBot-Skill/tree/v4)
 
 ## 致谢

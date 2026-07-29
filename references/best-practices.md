@@ -180,7 +180,14 @@ from services.persona_manager import PersonaManager  # Now finds YOUR services/
 
 ## 16. Sync Code to Runtime Environment
 
-AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot. Local install is supported on recent cores (≥4.26.3) with install-source validation.
+AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot. Local install is supported on recent cores (≥4.26.3) with install-source validation; **≥4.26.8** also fixed local upload hangs in WebUI (#9406).
+
+### Publishing (official, ≥4.26.8 market)
+
+1. Push to your GitHub plugin repo.
+2. Publish via [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI marketplace data syncs from Cloud).
+3. Keep release ZIP **≤ 16MB**; strip `.git`, `__pycache__`, venv, IDE dirs (same hygiene as MCP `zip_pack`).
+4. Authority: [Plugin publish guide](https://docs.astrbot.app/dev/star/plugin-publish.html) (zh) / EN twin under `/en/dev/star/`.
 
 **Checklist**:
 - [ ] Code changes are in the directory AstrBot loads from

@@ -201,9 +201,12 @@ aiohttp
 - When debugging message parsing, check `event.message_obj.message` and `event.message_obj.raw_message`
 - Test: command registration, default config values, permissions, reload/unload, platform component compatibility
 - **Runtime path**: AstrBot loads from its **plugin install directory**, not arbitrary worktrees — sync files or reinstall/reload after edits
-- **Local install** (≥4.26.3): core supports installing local plugins with source validation
+- **Local install** (≥4.26.3): core supports installing local plugins with source validation; ≥4.26.8 fixes upload hang
 - If LLM tools never run: check WebUI tool enable/permission (separate from plugin enable, ≥4.26.x)
 - After unload: KV for the plugin may be cleared (≥4.26.2)
+- **Publish**: AstrBot Cloud market; ZIP ≤16MB; see official plugin-publish guide
+- **Conf schema dict defaults**: mapped by core ≥4.26.8; still write explicit schema defaults
+- **Debug noise**: per-plugin log level in Dashboard / API ≥4.26.8
 
 ### Review gates (mandatory)
 

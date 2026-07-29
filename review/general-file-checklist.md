@@ -133,7 +133,9 @@ See `platform_adapters/adapter_interface.md` § "config_metadata" for full rules
 - [ ] If tools never fire: document/check WebUI **per-tool** enable/permission (plugin enable alone is not enough)
 - [ ] Do not document KV as surviving uninstall (cleared on uninstall ≥4.26.2)
 - [ ] Modular tools under subpackages: clear module paths; avoid double-binding handlers (core binding is idempotent ≥4.26.7, still prefer clean registration)
-- [ ] Config schema: UTF-8 BOM acceptable ≥4.26.7
+- [ ] Config schema: UTF-8 BOM acceptable ≥4.26.7; dict field defaults mapped ≥4.26.8
+- [ ] Publish: AstrBot Cloud + ZIP ≤16MB; package without venv/git/cache junk
+- [ ] Optional debug: per-plugin log level in Dashboard / log-level API (≥4.26.8)
 
 ## File Priority for Review
 

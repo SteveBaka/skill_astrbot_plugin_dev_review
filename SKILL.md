@@ -17,7 +17,7 @@ description: |
 metadata:
   short-description: AstrBot plugin dev + auto review
   version: "2.0"
-  compatibility: astrbot >=4.16 (recommend >=4.26 for current runtime behaviors)
+  compatibility: astrbot >=4.16 (recommend >=4.26.8 for current runtime / market / conf dict defaults)
   license: MIT
 ---
 
@@ -253,7 +253,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 ### Review Principles
 
 1. **Official docs + current version behavior are authoritative** — re-verify APIs against `star/plugin-new.md` + relevant guides; defer to official docs on conflict. Do **not** treat legacy `plugin.md` as source.
-2. **Also verify runtime behaviors** (v4.26.x+): plugin enable ≠ tool enable; uninstall clears plugin KV; schema may have UTF-8 BOM; handler binding is idempotent (still avoid double-register).
+2. **Also verify runtime behaviors** (v4.26.x+): plugin enable ≠ tool enable; uninstall clears plugin KV; schema may have UTF-8 BOM; handler binding is idempotent (still avoid double-register). On **≥4.26.8**: conf dict defaults mapped; local upload hang fixed; per-plugin log level available; publish via AstrBot Cloud (ZIP ≤16MB).
 3. **Phase A fails closed** — do not claim "ready to install" if any 🔴 remains.
 4. **Report only issues** — skip passing checks. If none: `✅ PASS — Phase A/B — 0 issues in N files.`
 5. **Severity**: 🔴 CRITICAL / 🟡 WARNING / 🔵 INFO
@@ -369,6 +369,9 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - Plugin enabled ≠ every LLM tool enabled — WebUI can disable tools independently (≥4.26.0 / 4.26.2) <!-- Source: releases -->
 - Plugin uninstall clears plugin KV storage (≥4.26.2) — do not assume KV survives uninstall <!-- Source: releases -->
 - `_conf_schema.json` may include UTF-8 BOM (≥4.26.7); still prefer UTF-8 without BOM for editors <!-- Source: releases -->
+- Dict-type fields in `_conf_schema.json`: core maps defaults correctly (≥4.26.8 #9414) — still use explicit schema defaults; do not rely on accidental `{}` sharing <!-- Source: v4.26.8 -->
+- Marketplace publish: use [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI market syncs from Cloud); package **ZIP ≤ 16MB**; include clean tree (no `.git` / `__pycache__` / venv) — aligns with MCP `zip_pack` excludes <!-- Source: plugin-publish.md / v4.26.8 -->
+- Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (≥4.26.8 #9342). **Not** in published OpenAPI snapshot yet — call only when instance is ≥4.26.8 <!-- Source: v4.26.8 source -->
 - Prefer official recommended Python **3.12** for development; skill minimum remains 3.10 for tooling <!-- Source: docs 4.26.2 -->
 
 ---
@@ -383,6 +386,8 @@ This skill contains 50+ files. Reading all of them wastes tokens. Follow these r
 - Always: `star/plugin-new.md`, `star/guides/simple.md`, `star/guides/listen-message-event.md`
 - By type: other files under `docs/en/dev/star/guides/`
 - Adapters MUST: `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
+- Publish / market: `https://docs.astrbot.app/dev/star/plugin-publish.html` (and EN twin); Cloud: `https://cloud.astrbot.app`
+- OpenAPI browse: `https://docs.astrbot.app/scalar.html` (machine JSON: `/openapi.json`)
 - **Ignore as authority**: `docs/en/dev/plugin.md` (legacy redirect)
 
 **Tier 1 — Core rules** (always read, ~300 lines):

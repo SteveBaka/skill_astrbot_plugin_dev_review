@@ -211,23 +211,29 @@ class TestSessionPolicy:
         json.loads(tools_chat.astrbot_chat_probe("hi", confirm_probe=True))
         assert captured["body"]["session_id"] == "custom-smoke"
 
-    def test_arg_beats_env(self, env, monkeypatch):
-        monkeypatch.setenv("ASTRBOT_CHAT_SMOKE_SESSION_ID", "from-env")
+    def test_random_session_id_arg_ignored(self, env, monkeypatch):
+        # Anti-spam: per-call random ids must NOT create new WebChat rows
         captured = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
             captured["body"] = json.loads(request.content.decode())
-            return httpx.Response(200, text='data: {"type": "end"}\n\n')
+            return httpx.Response(
+                200,
+                text='data: {"type": "plain", "data": "ok"}\n\ndata: {"type": "end"}\n\n',
+            )
 
         monkeypatch.setattr(
             tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler)
         )
-        json.loads(
+        r = json.loads(
             tools_chat.astrbot_chat_probe(
-                "hi", confirm_probe=True, session_id="from-arg"
+                "hi",
+                confirm_probe=True,
+                session_id="mcp-smoke-types-type2-deadbeef",
             )
         )
-        assert captured["body"]["session_id"] == "from-arg"
+        assert captured["body"]["session_id"] == "mcp-smoke-tester"
+        assert r["request"].get("session_id_arg_ignored") is True
 
     def test_http200_error_envelope_detected(self, env, monkeypatch):
         # AstrBot returns HTTP 200 + {"status": "error"} — must NOT count as ok

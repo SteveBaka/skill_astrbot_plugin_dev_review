@@ -298,15 +298,20 @@ def astrbot_chat_probe(
             or DEFAULT_CONFIG_NAME
         )
 
-    # [RUNTIME] Plan B fixed smoke session:
-    # server (open_api_service.ensure_chat_session) auto-creates the session
-    # with creator=<username> when the id does not exist, and rejects reuse by
-    # a different username — so one stable id per user is safe and idempotent.
-    sid = (session_id or "").strip()
-    if not sid:
-        sid = (os.environ.get("ASTRBOT_CHAT_SMOKE_SESSION_ID") or "").strip()
-    if not sid:
-        sid = f"mcp-smoke-{user}"
+    # [RUNTIME] Plan B fixed smoke session (anti-list-spam):
+    # ALWAYS land on ONE id per username. Callers used to pass random
+    # session_id (e.g. mcp-smoke-types-type2-<uuid>) and flood WebChat.
+    # Override only via ASTRBOT_CHAT_SMOKE_SESSION_ID (ops), not per-call
+    # session_id — arg is accepted for forward-compat but IGNORED unless it
+    # equals the canonical fixed id (explicit reuse).
+    # Deletion: API keys get Permission denied (creator=username); user deletes
+    # in Dashboard. AstrBot may also log conversation_mgr await-None on delete.
+    canonical = (os.environ.get("ASTRBOT_CHAT_SMOKE_SESSION_ID") or "").strip() or (
+        f"mcp-smoke-{user}"
+    )
+    requested = (session_id or "").strip()
+    sid = canonical
+    session_id_ignored = bool(requested and requested != canonical)
     body: Dict[str, Any] = {
         "message": msg,
         "username": user,
@@ -339,6 +344,7 @@ def astrbot_chat_probe(
             "config_name": cname or None,
             "config_id": cid or None,
             "smoke_session_id": sid,
+            "session_id_arg_ignored": session_id_ignored or None,
             "message_preview": msg if len(msg) <= 120 else msg[:120] + "…",
             "enable_streaming": bool(enable_streaming),
         },
@@ -431,10 +437,15 @@ def astrbot_chat_probe(
         )
 
     out["session_policy"] = (
-        f"Reused fixed smoke session '{sid}' (single stable entry in Dashboard "
-        "WebChat). Manage or delete it there; API keys cannot delete "
-        "user-owned sessions."
+        f"Forced fixed smoke session '{sid}' (one list entry). "
+        "Delete it in Dashboard WebChat while logged in as the session owner — "
+        "API keys always get Permission denied; core may also log "
+        "conversation_mgr await-None on delete (AstrBot issue, not MCP)."
     )
+    if session_id_ignored:
+        out["session_policy"] += (
+            f" Ignored non-canonical session_id arg '{requested}' to prevent list spam."
+        )
     return _dumps(out)
 
 

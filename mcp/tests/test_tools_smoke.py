@@ -96,6 +96,15 @@ class TestJudgeCase:
         v = judge_case(self._probe(ok=False, plains=["no tool needed"]), "llm_tool")
         assert v["verdict"] == "soft_pass"
 
+    def test_platform_llm_auth_not_pass(self):
+        # Regression: chat_probe ok=true on "LLM 响应错误" must NOT be smoke pass
+        plain = (
+            "LLM 响应错误: All chat models failed: AuthenticationError: "
+            "Error code: 401 - OAuth access token has expired"
+        )
+        v = judge_case(self._probe(ok=True, plains=[plain]), "command")
+        assert v["verdict"] == "platform_error"
+
     def test_content_truncated(self):
         v = judge_case(self._probe(ok=True, plains=["x" * 500]), "command")
         assert len(v["content"]["plain"][0]) == 120

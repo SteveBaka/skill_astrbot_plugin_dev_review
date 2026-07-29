@@ -7,6 +7,8 @@ Goal: contents ≈ GitHub "Download ZIP" / marketplace package:
   - Top-level folder = plugin directory name (usually astrbot_plugin_*)
   - Exclude files matching .gitignore (plugin root, then walk up to git root)
   - Always exclude common junk even if not listed in .gitignore
+  - Official market (AstrBot Cloud / plugin-publish, ≥4.26.8): published ZIP
+    must be ≤ 16MB — hard excludes + gitignore help stay under the limit
 
 Exclusion priority:
   1. Hard denylist (safety; matches typical release hygiene)
