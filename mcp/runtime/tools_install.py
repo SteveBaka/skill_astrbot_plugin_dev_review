@@ -263,6 +263,21 @@ def astrbot_plugin_install_path(
     out["post_install"] = steps
     in_failed = bool(steps.get("plugin_in_failed"))
     out["success"] = bool(upload.ok and not in_failed)
+    # [RUNTIME P2+] Failure diagnosis: classify load error + link FIX rule
+    if in_failed:
+        try:
+            from .failure_analysis import analyze_failed_payload
+
+            failed_payload = steps.get("failed_probe", {}).get("data")
+            analysis = analyze_failed_payload(failed_payload)
+            mine = [
+                d
+                for d in analysis["diagnoses"]
+                if str(plugin_id or "") in (d.get("dir_name", ""), d.get("plugin_name", ""))
+            ]
+            out["failure_diagnosis"] = mine or analysis["diagnoses"]
+        except Exception as exc:  # noqa: BLE001 — diagnosis must not break install report
+            out["failure_diagnosis"] = {"ok": False, "error": repr(exc)}
     # [RUNTIME P2.5] Privacy-safe Dashboard checklist only (no config reads)
     try:
         from .tools_profile import post_install_dashboard_hints

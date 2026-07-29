@@ -122,6 +122,8 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_chat_sessions_brief` | **[P3]** List WebChat sessions metadata (chat scope) |
 | `astrbot_chat_probe` | **[P3]** Opt-in SSE smoke via `POST /chat` (**confirm_probe**; fixed reusable smoke session) |
 | `astrbot_chat_sessions_cleanup` | **[P3]** Delete **webchat-only** sessions (**mutations** + confirm; cannot delete Dashboard-user sessions) |
+| `astrbot_review_path` | **[P2+]** AST static review of a local plugin dir (FIX-rule mapped; no AstrBot needed) |
+| `astrbot_smoke_suite` | **[P3+]** Composite smoke: status → auto-derived cases → probes → crash re-check (**confirm**) |
 
 CLI check (if `kilo` is installed):
 
@@ -285,6 +287,30 @@ OpenAPI body: `{ "delete_config": bool, "delete_data": bool }`.
 | Soft refuse | `error_kind=confirm_required` / `delete_*_confirm_required` → **API not called** |
 
 Agent must not uninstall production plugins during routine tests; use a dedicated sandbox only with user permission.
+
+### Static review (P2+) — codified FIX rules
+
+`astrbot_review_path(path)` runs deterministic AST checks against a local plugin directory — **no AstrBot instance needed**. Each finding carries a `rule` id linking `review/auto-fix-guide.md`:
+
+| Severity | Meaning | Examples |
+|----------|---------|----------|
+| error | breaks at import/load | FIX-00 wrong imports, FIX-04 sync requests, FIX-20 dataclass mutable defaults, FIX-21 deprecated filter APIs, FIX-01 missing super().__init__, SYNTAX |
+| warning | mandatory-rule violation | FIX-02 handler params, FIX-17 missing docstring, FIX-26 namespace, FIX-27 StarTools context, META-03/04 naming/PEP440, REQ-01 undeclared deps |
+| info | hygiene | FIX-23 unused imports, FIX-22 config-injection hint |
+
+Recommended order: `astrbot_review_path` → fix errors → `astrbot_plugin_install_path` → `astrbot_smoke_suite`. Judgment-level review (architecture, logic) stays with the Phase A/B LLM workflow — this tool only automates the statically decidable subset.
+
+### Smoke suite (P3+) — composite pipeline
+
+`astrbot_smoke_suite(plugin_id, confirm=true, username=...)` codifies the proven manual loop:
+
+1. Plugin status check — not loaded → failed-list diagnosis with FIX links; disabled → enable hint
+2. Case derivation from components: non-admin commands (info/help-like first), command groups, one hook probe, one llm_tool soft probe; `extra_messages="a||b"` appends custom cases; `max_cases` cap (default 8)
+3. Sequential `chat_probe` runs into the ONE fixed smoke session
+4. Post-run failed re-check — catches plugins that crash *during* the run
+5. Aggregated verdict: `pass` / `soft_pass` (llm_tool declined) / `error` / `no_content`
+
+Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-scoped key, username. Admin commands skipped unless `include_admin=true`.
 
 **Not done yet:** local log tail (P4).
 

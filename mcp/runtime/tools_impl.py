@@ -63,6 +63,8 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             "astrbot_chat_sessions_brief",
             "astrbot_chat_probe",
             "astrbot_chat_sessions_cleanup",
+            "astrbot_review_path",
+            "astrbot_smoke_suite",
         ],
         "install_scheme_a": "pack(.gitignore) → install/upload → enable → reload → failed",
         "plugin_dev_skill": (
@@ -154,10 +156,23 @@ def astrbot_plugin_list(
 
 
 def astrbot_plugin_failed() -> str:
-    """GET /api/v1/plugins/failed — failed plugins and load errors (read-only)."""
+    """GET /api/v1/plugins/failed — failed plugins with classified diagnoses."""
+    from .failure_analysis import analyze_failed_payload
+
     client = AstrBotClient()
     result = client.get("/api/v1/plugins/failed")
-    return _dumps(result.to_dict())
+    out = result.to_dict()
+    if result.ok:
+        analysis = analyze_failed_payload(result.data)
+        out["analysis"] = analysis
+        if analysis["failed_count"]:
+            out["next_step"] = (
+                "Each diagnosis links a fix_rule from review/auto-fix-guide.md. "
+                "Fix the plugin code, then astrbot_plugin_reload(failed=true). "
+                "Unclassified errors: read traceback_tail; recurring patterns "
+                "should be added to the FIX catalog."
+            )
+    return _dumps(out)
 
 
 def astrbot_plugin_get(plugin_id: str) -> str:

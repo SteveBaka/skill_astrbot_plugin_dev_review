@@ -116,6 +116,8 @@ class RuntimeConfig:
                 "ensure_plugin_dev_skill": self.enabled and self.allow_mutations,
                 "chat_probe": self.enabled,  # still needs confirm_probe or ALLOW_CHAT_PROBE
                 "chat_sessions_cleanup": self.enabled and self.allow_mutations,
+                "review_path": True,  # pure static analysis, no OpenAPI
+                "smoke_suite": self.enabled,  # + confirm / ALLOW_CHAT_PROBE at call time
             },
             "privacy": {
                 "no_auto_read_plugin_config": True,

@@ -204,23 +204,29 @@ skill_astrbot_plugin_dev_review/
     ├── server.py                         # MCP 入口（Docs + 可选 Runtime）
     ├── requirements.txt                  # MCP 依赖（httpx / pathspec / pytest）
     ├── SETUP.md                          # 安装与 Runtime 权威说明
-    ├── runtime/                          # AstrBot OpenAPI 控制面（P0–P3）
+    ├── runtime/                          # AstrBot OpenAPI 控制面（P0–P3+）
     │   ├── config.py                     # env 配置解析（安全门禁地基，密钥不回显）
     │   ├── client.py                     # OpenAPI HTTP 客户端（鉴权/错误分类/SSE）
-    │   ├── register.py                   # 19 个 Runtime 工具注册（FastMCP）
+    │   ├── register.py                   # 21 个 Runtime 工具注册（FastMCP）
     │   ├── tools_impl.py                 # P0 读：runtime_info / 插件列表 / failed / 详情
     │   ├── tools_manage.py               # P1 管：配置读写 / 启停 / 重载
     │   ├── tools_lifecycle.py            # P2 卸载（默认保留配置/数据 + 双重确认）
     │   ├── tools_install.py              # P2 安装（打包 → 上传 → enable → reload → failed）
     │   ├── zip_pack.py                   # gitignore 精确打包（硬排除底线不可覆盖）
+    │   ├── failure_analysis.py           # 失败分类器（traceback → FIX 规则直链）
+    │   ├── review_static.py              # AST 静态审查器（FIX 规则代码化）
+    │   ├── tools_smoke.py                # smoke 复合套件（用例生成 → probe → 判定）
     │   ├── tools_profile.py              # P2.5 plugin_dev_skill 档案 / Provider 清单
     │   └── tools_chat.py                 # P3 WebChat smoke（固定会话）+ 会话清理
-    ├── tests/                            # 单元测试（66 用例，无需 AstrBot 实例）
+    ├── tests/                            # 单元测试（126 用例，无需 AstrBot 实例）
     │   ├── conftest.py                   # 自动清空 ASTRBOT_* env（永不误触真实实例）
     │   ├── test_zip_pack.py              # 打包排除/命名规则（用 type2 示例插件作 fixture）
     │   ├── test_config.py                # env 解析与安全开关默认值
     │   ├── test_tools_chat.py            # SSE 解析 / 会话策略 / 门禁（httpx MockTransport）
-    │   └── test_client.py                # 鉴权头 / 错误分类 / 200 错误信封
+    │   ├── test_client.py                # 鉴权头 / 错误分类 / 200 错误信封
+    │   ├── test_failure_analysis.py      # 失败分类签名 / traceback 挖掘
+    │   ├── test_review_static.py         # 静态审查规则（示例插件须零 error）
+    │   └── test_tools_smoke.py           # smoke 用例生成 / 判定逻辑
     └── scripts/
         └── check_openapi_drift.py        # OpenAPI 契约漂移检测（对比线上 spec）
 ```
@@ -260,7 +266,7 @@ skill_astrbot_plugin_dev_review/
 
 ## MCP 服务器（可选）
 
-内置 MCP 服务器提供：**文档/审核工具（6）** + **AstrBot Runtime 工具（19）**（OpenAPI 局域网控插件、安装、开发测试档案、可选 WebChat smoke）。权威细节见 `mcp/SETUP.md`。
+内置 MCP 服务器提供：**文档/审核工具（6）** + **AstrBot Runtime 工具（21）**（OpenAPI 局域网控插件、安装、开发测试档案、静态审查器、WebChat smoke 套件）。权威细节见 `mcp/SETUP.md`。
 
 快速配置：
 
@@ -332,8 +338,10 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | P2 | 本地 ZIP 安装、安全卸载 | `install_path` / `pack_preview` / `uninstall` | + MUTATIONS；卸载默认保留配置/数据 |
 | P2.5 | 开发档案 `plugin_dev_skill`、装后 Dashboard 提示 | `ensure_plugin_dev_skill` / `providers_brief` / `post_install_hints` | 建档需 MUTATIONS；**不私自读配置全文** |
 | P3 | WebChat 会话列表、可选 smoke、webchat 会话清理 | `chat_sessions_brief` / `chat_probe` / `chat_sessions_cleanup` | Token 含 **chat**；probe 需用户允许；smoke 复用固定会话 `mcp-smoke-<username>`（列表恒定一条，Dashboard 管理；API Key 无法删用户会话） |
+| P2+ | **AST 静态审查器**：FIX 规则代码化（错误导入/废弃 API/可变默认值/元数据/依赖交叉检查等），发现项直链 `auto-fix-guide.md` | `review_path` | 纯本地分析，无需 AstrBot |
+| P3+ | **smoke 复合套件**：状态检查 → 按组件自动生成用例（指令/hook/llm_tool）→ 逐条 probe → 崩溃复查 → 聚合判定 | `smoke_suite` | 同 chat_probe 门禁；admin 指令默认跳过 |
 
-**推荐开发闭环**：改代码 → `install_path` →（按需）`ensure_plugin_dev_skill` → 用户在 Dashboard WebChat 选 **plugin_dev_skill** 自测 → 可选 `chat_probe`（`confirm_probe=true`；固定会话 `mcp-smoke-<username>`，测试记录集中一条、Dashboard 可管理）。
+**推荐开发闭环**：`review_path` 静态审查（修完 error）→ `install_path` 安装（失败自动附 FIX 诊断）→（按需）`ensure_plugin_dev_skill` → `smoke_suite` 自动冒烟（或用户在 Dashboard WebChat 选 **plugin_dev_skill** 手测）。全链路测试消息集中在固定会话 `mcp-smoke-<username>`，Dashboard 可管理。
 
 完整安装指南、客户端配置、工具列表见 `mcp/SETUP.md`。
 
@@ -356,7 +364,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd mcp && .venv/bin/pytest tests/
 ```
 
-66 个用例，无需 AstrBot 实例（conftest 自动清空 `ASTRBOT_*` env，永不误触真实服务）。覆盖：ZIP 打包排除/命名规则（以 `plugin-types/type2-session-waiter` 真实示例插件为 fixture）、env 安全开关解析、SSE 解析与固定会话策略（httpx MockTransport 模拟 HTTP）、鉴权头与"HTTP 200 错误信封"识别。
+126 个用例，无需 AstrBot 实例（conftest 自动清空 `ASTRBOT_*` env，永不误触真实服务）。覆盖：ZIP 打包排除/命名规则（以 `plugin-types/type2-session-waiter` 真实示例插件为 fixture）、env 安全开关解析、SSE 解析与固定会话策略（httpx MockTransport 模拟 HTTP）、鉴权头与"HTTP 200 错误信封"识别、失败分类签名、静态审查规则（6 个示例插件须零 error）、smoke 用例生成与判定。
 
 ### OpenAPI 契约漂移检测
 
@@ -367,8 +375,6 @@ python3 mcp/scripts/check_openapi_drift.py --offline  # 离线校验 runtime ↔
 ```
 
 数据源为官方 [`docs.astrbot.app/openapi.json`](https://docs.astrbot.app/scalar.html)（ETag 增量检测，未变化时 304 秒回）。脚本自动扫描 `mcp/runtime/` 中实际使用的 18 条端点，退出码：`0` 无漂移 / `1` **runtime 所用端点受影响**（先修 runtime 再信任工具）/ `2` 漂移但不涉及 runtime。**每次 AstrBot 发新版后建议跑一次**。
-
-> 本地快照 `AstrBot OpenAPI v1.json` 与 ETag sidecar 均已 gitignore，属本地开发资产。
 
 ## 版本要求
 

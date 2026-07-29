@@ -54,7 +54,9 @@ Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official d
 If MCP is configured:
 
 - **Docs tools (6)**: `get_skill_info`, `validate_import`, `get_review_checklist`, `search_docs`, `list_docs`, `get_doc`
-- **Runtime tools (19, `astrbot_*`)**: P0 read (`runtime_info`/`plugin_list`/`failed`/`get`) → P1 manage (config/enable/reload, **mutations**) → P2 lifecycle (`install_path`/`pack_preview`/`uninstall`) → P2.5 profile (`ensure_plugin_dev_skill`/`providers_brief`/`post_install_hints`/`config_profiles_brief`) → P3 chat (`chat_sessions_brief`/`chat_probe`/`chat_sessions_cleanup`, opt-in)
+- **Runtime tools (21, `astrbot_*`)**: P0 read (`runtime_info`/`plugin_list`/`failed`/`get`) → P1 manage (config/enable/reload, **mutations**) → P2 lifecycle (`install_path`/`pack_preview`/`uninstall`) → P2+ static review (`review_path`, FIX-rule mapped, no AstrBot needed) → P2.5 profile (`ensure_plugin_dev_skill`/`providers_brief`/`post_install_hints`/`config_profiles_brief`) → P3 chat (`chat_sessions_brief`/`chat_probe`/`chat_sessions_cleanup`, opt-in) → P3+ composite smoke (`smoke_suite`: auto-derived cases → probes → crash re-check)
+
+**Recommended loop**: `astrbot_review_path` (fix errors) → `astrbot_plugin_install_path` (failure auto-diagnosed with FIX links) → `astrbot_smoke_suite` (confirm=true after user allows)
 
 Setup + authoritative tool rules: `mcp/SETUP.md`
 

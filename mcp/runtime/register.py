@@ -17,15 +17,18 @@ Phases registered here:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from . import (
+    review_static,
     tools_chat,
     tools_impl,
     tools_install,
     tools_lifecycle,
     tools_manage,
     tools_profile,
+    tools_smoke,
 )
 
 
@@ -353,4 +356,64 @@ def register_runtime_tools(mcp: Any) -> None:
             all_for_username=all_for_username,
             confirm_cleanup=confirm_cleanup,
             max_delete=max_delete,
+        )
+
+    # ── P2+ static reviewer (no AstrBot needed) ────────────────
+
+    @mcp.tool()
+    def astrbot_review_path(path: str) -> str:
+        """
+        [RUNTIME P2+] AST static review of a local plugin dir (no AstrBot needed).
+
+        Deterministic checks mapped to review/auto-fix-guide.md FIX rules:
+        wrong imports (FIX-00), sync requests (FIX-04), deprecated filter APIs
+        (FIX-21), dataclass mutable defaults (FIX-20), Star __init__ /
+        super().__init__ (FIX-01), command docstrings (FIX-17), handler params
+        (FIX-02), StarTools context (FIX-27), namespace collisions (FIX-26),
+        unused imports (FIX-23), requirements.txt cross-check (REQ-01),
+        metadata required fields / naming / PEP 440 (META-*).
+        errors block install; warnings likely break behavior; info is hygiene.
+        Run before astrbot_plugin_install_path; judgment-level review stays
+        with the Phase A/B LLM workflow.
+        """
+        report = review_static.review_plugin_directory(path)
+        return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+
+    # ── P3+ smoke suite (composite) ────────────────────────────
+
+    @mcp.tool()
+    def astrbot_smoke_suite(
+        plugin_id: str,
+        confirm: bool = False,
+        username: str = "",
+        config_name: str = "",
+        include_admin: bool = False,
+        max_cases: int = 8,
+        extra_messages: str = "",
+        timeout_seconds: float = 0,
+    ) -> str:
+        """
+        [RUNTIME P3+] Composite smoke test for an installed plugin.
+
+        Pipeline: plugin status (+failed diagnosis with FIX links if not
+        loaded) → auto-derive cases from components (non-admin commands
+        prioritized info/help-first, command groups, one hook probe, one
+        llm_tool soft probe) → run each via chat_probe into the ONE fixed
+        smoke session → post-run failed re-check (runtime crash detector) →
+        aggregated pass/fail verdict.
+        SAFETY: same posture as chat_probe — confirm=true after user allows
+        (or ASTRBOT_ALLOW_CHAT_PROBE); chat-scoped key; username required
+        (arg or ASTRBOT_CHAT_USERNAME); admin commands skipped unless
+        include_admin=true; hard cap max_cases (default 8).
+        extra_messages: optional '||'-separated custom case messages.
+        """
+        return tools_smoke.astrbot_smoke_suite(
+            plugin_id,
+            confirm=confirm,
+            username=username,
+            config_name=config_name,
+            include_admin=include_admin,
+            max_cases=max_cases,
+            extra_messages=extra_messages,
+            timeout_seconds=timeout_seconds,
         )
