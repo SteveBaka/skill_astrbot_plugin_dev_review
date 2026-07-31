@@ -99,7 +99,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 两阶段审查 | 首次输出：Phase A 运行时全文校对；功能完成/用户审核：Phase B 全文准确·安全·完整 |
 | 高风险操作 | git commit/push/force、大规模改写已运行代码、批量删除 — 须用户明确允许 |
 | 卸载插件数据安全 | 卸载前须询问是否保留配置与持久化数据；**未回答则默认保留**；禁止擅自删除配置/数据 |
-| 本地安装/更新 | 方案 A：按 `.gitignore` 打 ZIP（文件名取自 metadata `name`/`version`）→ `install/upload` → enable → reload → failed；**优先重传**；同名冲突时再卸载（默认保留配置/数据）后重装 |
+| 本地安装/更新 | 方案 A：ZIP → `install/upload` → enable → reload → failed；**优先重传**；`success≠源码已替换`（同 version 可能陈旧）→ 抬 version 或 `force_refresh=true`（卸载**保留**配置/数据后重装）；同名冲突同样 keep 后重装 |
 | 开发测试配置 | 专用档案 `plugin_dev_skill`（基于 default，用户自选 Provider，只开当前插件）；Dashboard WebChat 主测；MCP 自动对话默认关闭 |
 | 配置隐私 | 禁止擅自读取插件/AstrBot 配置；装后仅提示前往 Dashboard；用户点名参数才可查 |
 | 插件与工具开关分离 | ≥4.26.x 插件启用 ≠ 每个 LLM Tool 启用 |

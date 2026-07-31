@@ -336,11 +336,12 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   2. `astrbot_plugin_pack_preview(path)` optional dry-run (respects `.gitignore` + hard excludes).
   3. `astrbot_plugin_install_path(path)` → ZIP → `POST /api/v1/plugins/install/upload` → enable → reload → `failed` probe.
   4. **Update loop (primary)**: edit on dev machine → `install_path` again (re-upload) → reload/failed (defaults on). **Do not uninstall first** when re-upload works.
-  5. ZIP **filename** is generated from `metadata.yaml`: `{name}-{version}.zip` (fallback `{name}.zip` / folder name). Archive top-level folder prefers `metadata.name`.
-  6. ZIP **contents** exclusions follow plugin/parent `.gitignore` so packages align with GitHub Download ZIP / marketplace; always drop `.git`/`.venv`/`__pycache__`/etc.
-  7. **Same-name conflict (fallback only)**: if upload fails because the plugin is already installed / name conflicts, then uninstall with **keep config + keep data** (`delete_config=false`, `delete_data=false`; MCP: `keep_config=true`, `keep_data=true`, `confirm_uninstall=true`) and run `install_path` again. Never wipe config/data unless the user explicitly approves. Prefer primary re-upload path whenever possible.
-  8. Requires `ASTRBOT_ALLOW_MUTATIONS=true`. Do not use chat `file` APIs as install channel.
-  9. Routine tests: prefer user-approved sandbox (`astrbot_plugin_mimo_tts`); do not mass-install unrelated plugins.
+  5. **`success=true` ≠ code replaced.** Same `metadata.version` re-upload may leave old files (stale components/behavior). If no effect: bump `version` then install, or `install_path(..., force_refresh=true)` (uninstall **keep config+data** then upload). Default never auto-uninstall; tool may set `warning=possible_stale_install`.
+  6. ZIP **filename** is generated from `metadata.yaml`: `{name}-{version}.zip` (fallback `{name}.zip` / folder name). Archive top-level folder prefers `metadata.name`.
+  7. ZIP **contents** exclusions follow plugin/parent `.gitignore` so packages align with GitHub Download ZIP / marketplace; always drop `.git`/`.venv`/`__pycache__`/etc.
+  8. **Same-name conflict (fallback only)**: if upload fails because the plugin is already installed / name conflicts, then uninstall with **keep config + keep data** (`delete_config=false`, `delete_data=false`; MCP: `keep_config=true`, `keep_data=true`, `confirm_uninstall=true`) and run `install_path` again — or use `force_refresh=true`. Never wipe config/data unless the user explicitly approves. Prefer primary re-upload path whenever possible.
+  9. Requires `ASTRBOT_ALLOW_MUTATIONS=true`. Do not use chat `file` APIs as install channel.
+  10. Routine tests: prefer user-approved sandbox (`astrbot_plugin_mimo_tts`); do not mass-install unrelated plugins.
 - **Dev WebChat profile `plugin_dev_skill` (Runtime MCP)** — isolation for functional tests:
   1. Do **not** use AstrBot `default` profile to validate plugin features (`plugin_set` is often empty / polluted).
   2. Before create: list providers (`astrbot_providers_brief`), **user picks** `provider_id`; target `plugin_id` known.

@@ -221,10 +221,25 @@ edit source on MCP host machine
 | API | `POST /api/v1/plugins/install/upload` multipart field `file` |
 | Update loop (**primary**) | Re-run `install_path` after edits — **no uninstall** |
 | Same-name conflict (**fallback**) | If upload conflicts with already-installed plugin: uninstall with `keep_config=true` + `keep_data=true` (never delete config/data by default), then `install_path` again |
+| **Stale same-version** | `success=true` **≠** “source replaced”. Core may keep old files when `version` unchanged — behavior/component docstrings stay old |
+| **Refresh options** | (1) Bump `metadata.yaml` `version` then `install_path`; (2) `install_path(..., force_refresh=true)` → uninstall **keep config+data** then upload (`refresh_mode=reinstall_keep_config_data`); (3) manual uninstall keep_* then install |
+| **Default safety** | `force_refresh` default **false** — never silent uninstall. No confirm → no wipe of config/data |
 | Gate | `ASTRBOT_ALLOW_MUTATIONS=true` |
 | Timeout | Upload uses ≥60s or `ASTRBOT_HTTP_TIMEOUT` if higher |
 
-**Result analysis:** `success=true` and `plugin_in_failed=false` means load OK. `pack_failed` / `not_a_plugin` = fix local path structure before retry. `same_name_conflict_suspected=true` → use fallback uninstall-keep-then-install only after primary re-upload fails.
+**Result analysis:**
+
+| Field | Meaning |
+|-------|---------|
+| `success=true` + `plugin_in_failed=false` | Load path OK — **not** proof that every local edit is on disk |
+| `pack_main_py_sha256_16` | Fingerprint of `main.py` inside the uploaded ZIP |
+| `snapshot_before` / `snapshot_after` | Version + component fingerprint (type/name/command/description) |
+| `warning=possible_stale_install` | Before/after component fingerprint identical after re-upload → try bump version or `force_refresh=true` |
+| `refresh_mode` | `upload_only` (default) or `reinstall_keep_config_data` (when force_refresh ran) |
+| `pack_failed` / `not_a_plugin` | Fix local path structure before retry |
+| `same_name_conflict_suspected=true` | Fallback uninstall-keep-then-install (or `force_refresh`) only after primary re-upload fails |
+
+**Agent rule:** After code changes, if smoke/behavior still looks old, do **not** only re-`install_path` blindly — bump version or `force_refresh=true` (still keeps config/data unless user explicitly asked to wipe).
 
 ### Dev profile `plugin_dev_skill` (P2.5)
 

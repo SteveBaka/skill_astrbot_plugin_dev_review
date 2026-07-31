@@ -11,18 +11,30 @@ class DailyReportPlugin(Star):
         super().__init__(context)
         self.cron_mgr = context.cron_manager
 
+    JOB_NAME = "daily_report"
+
     async def initialize(self):
-        """Register scheduled tasks"""
+        """Register scheduled tasks (idempotent).
+
+        Core API (v4.26.x): add_basic_job always inserts a new DB row with a new
+        job_id; delete_job expects job_id (UUID), NOT the human name. Using
+        name as job_id does not remove prior rows — every reload/reinstall with
+        persistent=True stacks duplicate "daily_report" entries. Deduplicate by
+        name → delete each job_id → add once.
+        """
         try:
+            removed = await self._delete_jobs_by_name(self.JOB_NAME)
+            if removed:
+                logger.info(f"Removed {removed} existing cron job(s) named {self.JOB_NAME}")
             await self.cron_mgr.add_basic_job(
-                name="daily_report",
+                name=self.JOB_NAME,
                 cron_expression="0 9 * * *",
                 handler=self._daily_handler,
                 persistent=True,
                 description="Daily report at 9:00 AM",
                 enabled=True,
             )
-            logger.info("Daily report cron job registered")
+            logger.info("Daily report cron job registered (idempotent by name)")
         except Exception as e:
             logger.error(f"Failed to register cron job: {e}")
 
@@ -47,10 +59,26 @@ class DailyReportPlugin(Star):
             result = await result
         return result or []
 
-    async def _delete_job_safe(self, name: str):
-        result = self.cron_mgr.delete_job(name)
+    async def _delete_job_by_id(self, job_id: str):
+        """delete_job requires job_id (UUID), not display name."""
+        result = self.cron_mgr.delete_job(job_id)
         if hasattr(result, "__await__"):
             await result
+
+    async def _delete_jobs_by_name(self, name: str) -> int:
+        """Delete every job whose .name matches (may be multiple duplicates)."""
+        jobs = await self._list_jobs_safe()
+        n = 0
+        for job in jobs:
+            jname = self._job_attr(job, "name", default="")
+            jid = self._job_attr(job, "job_id", "id", default="")
+            if jname == name and jid:
+                try:
+                    await self._delete_job_by_id(str(jid))
+                    n += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete cron job {jid}: {e}")
+        return n
 
     @filter.command("cron_list")
     async def list_jobs(self, event: AstrMessageEvent):
@@ -66,35 +94,55 @@ class DailyReportPlugin(Star):
 
         lines = ["Scheduled tasks:"]
         for job in jobs:
-            name = self._job_attr(job, "name", "id", default="?")
+            name = self._job_attr(job, "name", default="?")
+            jid = self._job_attr(job, "job_id", "id", default="?")
             expr = self._job_attr(job, "cron_expression", "cron", "expression", default="?")
             enabled = self._job_attr(job, "enabled", default=True)
-            lines.append(f"- {name} | {expr} | {'enabled' if enabled else 'disabled'}")
+            lines.append(
+                f"- {name} | id={jid} | {expr} | {'enabled' if enabled else 'disabled'}"
+            )
         yield event.plain_result("\n".join(lines))
 
     @filter.command("cron_delete")
     async def delete_job(self, event: AstrMessageEvent):
-        """Delete a scheduled task by name. Usage: /cron_delete <name>"""
-        # message_str may still contain the command token depending on platform
+        """Delete scheduled tasks by name (all duplicates) or by job_id.
+
+        Usage: /cron_delete <name_or_job_id>
+        """
         raw = event.message_str.strip()
         parts = raw.split(None, 1)
         if raw.lower().startswith("cron_delete"):
-            name = parts[1].strip() if len(parts) > 1 else ""
+            target = parts[1].strip() if len(parts) > 1 else ""
         else:
-            name = raw
-        if not name:
-            yield event.plain_result("Usage: /cron_delete <task_name>")
+            target = raw
+        if not target:
+            yield event.plain_result(
+                "Usage: /cron_delete <task_name|job_id>\n"
+                "Tip: name deletes all jobs with that name; job_id deletes one row."
+            )
             return
         try:
-            await self._delete_job_safe(name)
-            yield event.plain_result(f"Deleted task: {name}")
+            jobs = await self._list_jobs_safe()
+            ids = []
+            for job in jobs:
+                jname = str(self._job_attr(job, "name", default=""))
+                jid = str(self._job_attr(job, "job_id", "id", default=""))
+                if target == jid or target == jname:
+                    if jid:
+                        ids.append(jid)
+            if not ids:
+                yield event.plain_result(f"No job matched: {target}")
+                return
+            for jid in ids:
+                await self._delete_job_by_id(jid)
+            yield event.plain_result(f"Deleted {len(ids)} job(s) matching: {target}")
         except Exception as e:
             yield event.plain_result(f"Delete failed: {e}")
 
     async def terminate(self):
-        """Clean up scheduled tasks"""
+        """Clean up scheduled tasks by name (all duplicates)."""
         try:
-            await self._delete_job_safe("daily_report")
-            logger.info("Daily report cron job cleaned up")
+            n = await self._delete_jobs_by_name(self.JOB_NAME)
+            logger.info(f"Cleaned up {n} daily_report cron job(s)")
         except Exception as e:
             logger.warning(f"Error cleaning up cron job: {e}")

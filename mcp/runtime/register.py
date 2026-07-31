@@ -190,6 +190,7 @@ def register_runtime_tools(mcp: Any) -> None:
         enable: bool = True,
         reload: bool = True,
         ignore_version_check: bool = False,
+        force_refresh: bool = False,
     ) -> str:
         """
         [RUNTIME P2] Scheme A: pack local plugin → install/upload → enable → reload → failed.
@@ -198,6 +199,10 @@ def register_runtime_tools(mcp: Any) -> None:
         ZIP excludes match .gitignore (+ hard denylist) so contents align with
         GitHub/marketplace packages.
         Dev update loop: edit → install_path → (reload/failed included by default).
+        success=true does NOT guarantee on-disk code replaced (same version may be
+        stale). If components/behavior unchanged: bump metadata.version, or set
+        force_refresh=true (uninstall keep config+data → re-upload). Default never
+        auto-uninstall; may return warning possible_stale_install.
         Needs ASTRBOT_ALLOW_MUTATIONS=true. Prefer testing on user-approved sandbox
         plugins (e.g. astrbot_plugin_mimo_tts) only.
         """
@@ -206,6 +211,7 @@ def register_runtime_tools(mcp: Any) -> None:
             enable=enable,
             reload=reload,
             ignore_version_check=ignore_version_check,
+            force_refresh=force_refresh,
         )
 
     # ── P2.5 plugin_dev_skill + privacy-safe hints ─────────────

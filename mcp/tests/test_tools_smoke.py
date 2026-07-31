@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 
-from runtime.tools_smoke import astrbot_smoke_suite, build_smoke_cases, judge_case
+from runtime.tools_smoke import (
+    astrbot_smoke_suite,
+    build_smoke_cases,
+    judge_case,
+)
 
-# component fixtures mirroring GET /plugins/{id} output (mimo_tts shape)
 COMPONENTS = [
     {"type": "command", "name": "ttsinfo", "command": "ttsinfo", "has_admin": False},
     {"type": "command", "name": "mimo_say", "command": "mimo_say", "has_admin": False},
@@ -29,7 +32,7 @@ class TestBuildCases:
 
     def test_info_like_commands_first(self):
         cases = build_smoke_cases(COMPONENTS)
-        assert cases[0]["name"] == "ttsinfo"  # info-like prioritized
+        assert cases[0]["name"] == "ttsinfo"
 
     def test_hook_generates_one_probe(self):
         kinds = [c["kind"] for c in build_smoke_cases(COMPONENTS)]
@@ -64,6 +67,17 @@ class TestBuildCases:
         ]
         assert len(build_smoke_cases(dup)) == 1
 
+    def test_curated_example_plugin(self):
+        cases = build_smoke_cases(
+            [{"type": "command", "command": "weather", "has_admin": False}],
+            plugin_id="astrbot_plugin_weather_tool",
+        )
+        names = [c["name"] for c in cases]
+        assert "weather_usage" in names
+        assert "weather_beijing" in names
+        # curated first
+        assert cases[0]["require_markers"] is True
+
 
 class TestJudgeCase:
     def _probe(self, ok=True, plains=None, records=None, errors=None):
@@ -92,18 +106,47 @@ class TestJudgeCase:
         assert v["verdict"] == "no_content"
 
     def test_llm_tool_soft_pass(self):
-        # tool not invoked but LLM replied → soft signal, not failure
         v = judge_case(self._probe(ok=False, plains=["no tool needed"]), "llm_tool")
         assert v["verdict"] == "soft_pass"
 
     def test_platform_llm_auth_not_pass(self):
-        # Regression: chat_probe ok=true on "LLM 响应错误" must NOT be smoke pass
         plain = (
             "LLM 响应错误: All chat models failed: AuthenticationError: "
             "Error code: 401 - OAuth access token has expired"
         )
         v = judge_case(self._probe(ok=True, plains=[plain]), "command")
         assert v["verdict"] == "platform_error"
+
+    def test_handler_exception_not_pass(self):
+        plain = (
+            "在调用插件 astrbot_plugin_daily_report 的处理函数 list_jobs 时出现异常："
+            "'coroutine' object is not iterable"
+        )
+        v = judge_case(self._probe(ok=True, plains=[plain]), "command")
+        assert v["verdict"] == "handler_error"
+
+    def test_markers_required(self):
+        v = judge_case(
+            self._probe(ok=True, plains=["Welcome to the quiz!"]),
+            "example",
+            markers=("welcome", "question"),
+            require_markers=True,
+        )
+        assert v["verdict"] == "pass"
+        v2 = judge_case(
+            self._probe(ok=True, plains=["嗯？什么意思"]),
+            "example",
+            markers=("welcome", "question"),
+            require_markers=True,
+        )
+        assert v2["verdict"] == "content_mismatch"
+
+    def test_chitchat_command_mismatch(self):
+        v = judge_case(
+            self._probe(ok=True, plains=["不太清楚你说的 toggle_hook 是指什么"]),
+            "command",
+        )
+        assert v["verdict"] == "content_mismatch"
 
     def test_content_truncated(self):
         v = judge_case(self._probe(ok=True, plains=["x" * 500]), "command")
@@ -121,6 +164,5 @@ class TestSuiteGates:
 
     def test_env_allows(self, monkeypatch):
         monkeypatch.setenv("ASTRBOT_ALLOW_CHAT_PROBE", "true")
-        # passes gate; fails later on not_configured (no BASE_URL in tests)
         r = json.loads(astrbot_smoke_suite("astrbot_plugin_x"))
         assert r.get("error_kind") != "confirm_required"

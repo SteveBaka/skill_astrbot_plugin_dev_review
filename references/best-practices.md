@@ -182,6 +182,17 @@ from services.persona_manager import PersonaManager  # Now finds YOUR services/
 
 AstrBot loads plugins from the **installation directory**, not the working directory. After modifying code locally, ensure the changes are synced to where AstrBot reads them. Use WebUI "Reload Plugin" or restart AstrBot. Local install is supported on recent cores (≥4.26.3) with install-source validation; **≥4.26.8** also fixed local upload hangs in WebUI (#9406).
 
+### MCP / local ZIP install (Scheme A) — true update vs false success
+
+When using Runtime `astrbot_plugin_install_path` (or WebUI local upload):
+
+1. **Do not assume `success=true` means new source is loaded.** Same `metadata.version` re-upload often leaves previous files; component descriptions and runtime behavior may stay unchanged.
+2. **If behavior or component metadata did not change after install:**
+   - **Preferred:** bump `version` in `metadata.yaml`, then install again; or
+   - **Refresh without wiping user state:** uninstall with **keep config + keep data**, then install; MCP: `force_refresh=true` (or manual `uninstall` keep_* → `install_path`).
+3. **Never** clear config/persistent data on refresh unless the user **explicitly** asked to wipe them. “Uninstall” alone defaults to keep both.
+4. Tool may report `warning: possible_stale_install` when pre/post component fingerprints match — treat as a signal to refresh, not as install failure.
+
 ### Publishing (official, ≥4.26.8 market)
 
 1. Push to your GitHub plugin repo.
@@ -193,5 +204,6 @@ AstrBot loads plugins from the **installation directory**, not the working direc
 - [ ] Code changes are in the directory AstrBot loads from
 - [ ] No stale `.pyc` or `__pycache__` from old versions
 - [ ] All imports match the current module exports (no stale variable names after refactoring)
+- [ ] After local re-install: confirm behavior **or** component list actually changed; if not, bump version / force_refresh (keep config/data)
 - [ ] If tools missing: check WebUI tool enable/permission separately from plugin enable (≥4.26.x)
 - [ ] After uninstall tests: expect plugin KV cleared (≥4.26.2)
