@@ -64,6 +64,7 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             "astrbot_chat_probe",
             "astrbot_chat_sessions_cleanup",
             "astrbot_review_path",
+            "astrbot_scaffold_plugin",
             "astrbot_smoke_suite",
         ],
         "install_scheme_a": "pack(.gitignore) → install/upload → enable → reload → failed",

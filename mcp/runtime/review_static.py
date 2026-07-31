@@ -23,54 +23,21 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-# ── shared knowledge (kept in sync with server.py IMPORT_TABLE) ─
+from .contracts import (
+    ADAPTER_CONFIG_CORE_INJECTED_KEYS,
+    ADAPTER_PLATFORM_RESERVED_ATTRS,
+    ADAPTER_REQUIRED_METHODS,
+    ASTRBOT_BUNDLED,
+    DEPRECATED_FILTER_ATTRS,
+    GENERIC_PKG_NAMES,
+    STDLIB_TOP_LEVEL,
+    WRONG_FROM_API,
+    WRONG_IMPORT_MODULES,
+)
 
-# wrong-import module paths that do not exist / must not be used
-WRONG_IMPORT_MODULES = {
-    "astrbot.api.logger": "from astrbot.api import logger  # FIX-00",
-}
-
-# symbols importable from astrbot.api directly is WRONG for these:
-WRONG_FROM_API = {
-    "filter": "from astrbot.api.event import filter",
-    "AstrMessageEvent": "from astrbot.api.event import AstrMessageEvent",
-    "Star": "from astrbot.api.star import Star",
-    "Context": "from astrbot.api.star import Context",
-    "StarTools": "from astrbot.api.star import StarTools",
-    "ProviderRequest": "from astrbot.api.provider import ProviderRequest",
-    "LLMResponse": "from astrbot.api.provider import LLMResponse",
-    "Plain": "from astrbot.api.message_components import Plain",
-    "Image": "from astrbot.api.message_components import Image",
-    "MessageChain": "from astrbot.api.event import MessageChain",
-    "session_waiter": "from astrbot.core.utils.session_waiter import session_waiter",
-    "FunctionTool": "from astrbot.core.agent.tool import FunctionTool",
-    "Platform": "from astrbot.api.platform import Platform",
-}
-
-DEPRECATED_FILTER_ATTRS = {"on_keyword", "on_full_match", "on_regex"}
-
-GENERIC_PKG_NAMES = {"services", "handlers", "utils", "models", "core", "api", "common"}
-
-# stdlib top-level modules we should not demand in requirements.txt
-_STDLIB_HINT = {
-    "os", "sys", "re", "io", "json", "time", "datetime", "asyncio", "typing",
-    "pathlib", "collections", "functools", "itertools", "math", "random",
-    "uuid", "hashlib", "base64", "urllib", "http", "logging", "traceback",
-    "dataclasses", "enum", "abc", "contextlib", "tempfile", "shutil",
-    "subprocess", "socket", "struct", "copy", "string", "textwrap", "types",
-    "inspect", "importlib", "warnings", "unicodedata", "zoneinfo", "sqlite3",
-    "csv", "html", "xml", "zipfile", "tarfile", "gzip", "secrets", "signal",
-    "threading", "queue", "weakref", "numbers", "decimal", "fractions",
-}
-
-
-# packages bundled with AstrBot core — plugins may use them without declaring
-# (verified against AstrBot requirements; keep conservative)
-_ASTRBOT_BUNDLED = {
-    "aiohttp", "pydantic", "quart", "yaml", "pyyaml", "loguru", "httpx",
-    "aiosqlite", "PIL", "pillow", "apscheduler", "fastapi", "uvicorn",
-    "starlette", "openai", "anthropic",
-}
+# Re-export names used by tests / external callers
+_STDLIB_HINT = STDLIB_TOP_LEVEL
+_ASTRBOT_BUNDLED = ASTRBOT_BUNDLED
 
 
 @dataclass
@@ -310,6 +277,39 @@ class _FileChecker(ast.NodeVisitor):
 
     def _check_handler(self, node) -> None:
         decs = self._handler_decorators(node)
+        # FIX-03: LLM hook signatures
+        for hook in ("on_llm_request", "on_llm_response"):
+            if hook in decs:
+                args = [a.arg for a in node.args.args]
+                if not isinstance(node, ast.AsyncFunctionDef):
+                    self.out(
+                        "FIX-03",
+                        "error",
+                        node.lineno,
+                        f"`{hook}` handler must be async def",
+                        "Use async def on_llm_request/response(self, event, req|resp).",
+                    )
+                # expect self, event, req/resp (3 params)
+                if len(args) < 3:
+                    self.out(
+                        "FIX-03",
+                        "error",
+                        node.lineno,
+                        f"`{hook}` signature too short {args} — need "
+                        f"(self, event, {'req' if 'request' in hook else 'resp'})",
+                        "See guides/listen-message-event.md hook section.",
+                    )
+                # yield forbidden in hooks — scan body for Yield
+                for sub in ast.walk(node):
+                    if isinstance(sub, ast.Yield) or isinstance(sub, ast.YieldFrom):
+                        self.out(
+                            "FIX-03",
+                            "error",
+                            getattr(sub, "lineno", node.lineno),
+                            f"yield is forbidden inside `{hook}` — use event.send()",
+                            "Hooks must not yield MessageEventResult.",
+                        )
+                        break
         if "command" in decs or "command_group" in decs:
             if not (node.body and isinstance(node.body[0], ast.Expr)
                     and isinstance(node.body[0].value, ast.Constant)
@@ -514,3 +514,270 @@ def review_plugin_directory(plugin_path: str | Path) -> ReviewReport:
     check_requirements(root, all_modules, report)
     check_namespace(root, main_source, report)
     return report.finalize()
+
+
+# ── adapter profile (FIX-06 frame) ─────────────────────────────
+
+
+class _AdapterFileChecker(ast.NodeVisitor):
+    """Lightweight adapter-oriented checks (separate from Star plugin review)."""
+
+    def __init__(self, rel_path: str, tree: ast.AST, source: str) -> None:
+        self.rel = rel_path
+        self.tree = tree
+        self.source = source
+        self.findings: List[Finding] = []
+        self.platform_classes: List[ast.ClassDef] = []
+        self.has_register = "register_platform_adapter" in source
+        self.top_level_modules: Set[str] = set()
+
+    def out(self, rule: str, sev: str, line: int, msg: str, hint: str = "") -> None:
+        self.findings.append(Finding(rule, sev, self.rel, line, msg, hint))
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.top_level_modules.add(alias.name.split(".")[0])
+            if alias.name == "requests":
+                self.out(
+                    "FIX-04",
+                    "error",
+                    node.lineno,
+                    "sync requests in adapter",
+                    "Use async HTTP client.",
+                )
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        mod = node.module or ""
+        if node.level == 0 and mod:
+            self.top_level_modules.add(mod.split(".")[0])
+        if mod in WRONG_IMPORT_MODULES:
+            self.out(
+                "FIX-00",
+                "error",
+                node.lineno,
+                f"bad import module `{mod}`",
+                WRONG_IMPORT_MODULES[mod],
+            )
+        if mod == "astrbot.api":
+            for alias in node.names:
+                if alias.name in WRONG_FROM_API:
+                    self.out(
+                        "FIX-00",
+                        "error",
+                        node.lineno,
+                        f"`{alias.name}` not from astrbot.api",
+                        WRONG_FROM_API[alias.name],
+                    )
+        self.generic_visit(node)
+
+    def _is_platform_subclass(self, node: ast.ClassDef) -> bool:
+        for base in node.bases:
+            name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
+            if name == "Platform":
+                return True
+        return False
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        if self._is_platform_subclass(node):
+            self.platform_classes.append(node)
+            method_names = {
+                s.name
+                for s in node.body
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            for req in ADAPTER_REQUIRED_METHODS:
+                if req not in method_names:
+                    self.out(
+                        "ADAPT-01",
+                        "error",
+                        node.lineno,
+                        f"Platform subclass `{node.name}` missing required method `{req}`",
+                        "Implement run, meta, send_by_session (adapter_interface.md).",
+                    )
+            # FIX-06: risky shadow of Platform queue/client (self.config is set by base — OK)
+            risky = ADAPTER_PLATFORM_RESERVED_ATTRS - {"config", "name", "id", "logger"}
+            for s in node.body:
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == "__init__":
+                    for sub in ast.walk(s):
+                        if isinstance(sub, ast.Attribute) and isinstance(
+                            sub.value, ast.Name
+                        ):
+                            if (
+                                sub.value.id == "self"
+                                and sub.attr in risky
+                                and isinstance(sub.ctx, ast.Store)
+                            ):
+                                self.out(
+                                    "FIX-06",
+                                    "error",
+                                    sub.lineno,
+                                    f"assigns self.{sub.attr} — may conflict with Platform base (FIX-06)",
+                                    "Prefer private names (e.g. self._client). "
+                                    "See astrbot/core/platform/platform.py.",
+                                )
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        # @register_platform_adapter(..., default_config_tmpl={...}, config_metadata={...})
+        func = node.func
+        name = ""
+        if isinstance(func, ast.Name):
+            name = func.id
+        elif isinstance(func, ast.Attribute):
+            name = func.attr
+        if name == "register_platform_adapter":
+            self._check_register_config_builtins(node)
+        self.generic_visit(node)
+
+    def _dict_keys(self, node: ast.AST) -> List[str]:
+        keys: List[str] = []
+        if not isinstance(node, ast.Dict):
+            return keys
+        for k in node.keys:
+            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                keys.append(k.value)
+        return keys
+
+    def _check_register_config_builtins(self, node: ast.Call) -> None:
+        """Official register.py injects type/enable/id if missing — authors omit them."""
+        for kw in node.keywords:
+            if kw.arg not in ("default_config_tmpl", "config_metadata"):
+                continue
+            keys = self._dict_keys(kw.value)
+            redundant = sorted(set(keys) & ADAPTER_CONFIG_CORE_INJECTED_KEYS)
+            if redundant:
+                # warning: core injects these; re-listing is not a load failure
+                self.out(
+                    "FIX-06",
+                    "warning",
+                    node.lineno,
+                    f"`{kw.arg}` re-lists core-injected keys {redundant}",
+                    "Per astrbot/core/platform/register.py, omit type/enable/id from "
+                    "author tmpl — core fills them. Prefer custom fields only "
+                    "(docs FakePlatform). Do not use _conf_schema.json for adapters.",
+                )
+
+    def run(self) -> "_AdapterFileChecker":
+        self.visit(self.tree)
+        # Per-file: Platform/register may live outside main.py (synochat pattern).
+        return self
+
+
+def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
+    """
+    Adapter-oriented static review (profile=adapter).
+
+    Framework checks only — full E2E smoke requires a real adapter instance.
+    """
+    report = ReviewReport()
+    try:
+        root = Path(plugin_path).expanduser().resolve()
+    except Exception as exc:  # noqa: BLE001
+        report.error = f"Invalid path: {exc}"
+        report.ok = False
+        return report
+    report.plugin_dir = str(root)
+    if not root.is_dir():
+        report.error = f"Not a directory: {root}"
+        report.ok = False
+        return report
+    main_py = root / "main.py"
+    if not main_py.is_file():
+        report.error = "main.py missing — not an adapter root"
+        report.ok = False
+        return report
+
+    # metadata optional but recommended for packaging
+    if (root / "metadata.yaml").is_file():
+        check_metadata(root / "metadata.yaml", report)
+
+    # Adapters must NOT use Star-plugin _conf_schema.json (different config path).
+    # Real-world: confusing schema with platform default_config_tmpl / built-ins.
+    conf_schema = root / "_conf_schema.json"
+    if conf_schema.is_file():
+        report.add(
+            Finding(
+                "FIX-06",
+                "error",
+                "_conf_schema.json",
+                0,
+                "platform adapters must not ship `_conf_schema.json`",
+                "Use @register_platform_adapter default_config_tmpl + config_metadata "
+                "only (官方 FakePlatform / register.py). Star _conf_schema.json is for "
+                "plugins, not 消息平台 instances.",
+            )
+        )
+
+    all_modules: Set[str] = set()
+    any_platform = False
+    any_register = False
+    py_files = sorted(
+        p
+        for p in root.rglob("*.py")
+        if not any(
+            part in ("__pycache__", ".venv", "venv", ".git") for part in p.parts
+        )
+    )
+    for py in py_files:
+        rel = str(py.relative_to(root))
+        source = py.read_text(encoding="utf-8", errors="replace")
+        try:
+            tree = ast.parse(source)
+        except SyntaxError as exc:
+            report.add(
+                Finding(
+                    "SYNTAX",
+                    "error",
+                    rel,
+                    exp.lineno or 0 if False else (exc.lineno or 0),
+                    f"SyntaxError: {exc.msg}",
+                    "Fix syntax before adapter load.",
+                )
+            )
+            continue
+        checker = _AdapterFileChecker(rel, tree, source).run()
+        report.findings.extend(checker.findings)
+        all_modules |= checker.top_level_modules
+        if checker.platform_classes:
+            any_platform = True
+        if checker.has_register:
+            any_register = True
+        report.files_checked += 1
+
+    if not any_platform:
+        report.add(
+            Finding(
+                "ADAPT-01",
+                "error",
+                "main.py",
+                0,
+                "no Platform subclass found in package",
+                "Inherit Platform in any module (often not main.py) and implement run/meta/send_by_session.",
+            )
+        )
+    if not any_register:
+        report.add(
+            Finding(
+                "ADAPT-02",
+                "warning",
+                "main.py",
+                0,
+                "register_platform_adapter not found in package",
+                "Adapters should use @register_platform_adapter(...).",
+            )
+        )
+
+    # Not third-party packages
+    all_modules.discard("__future__")
+    all_modules.discard("hmac")
+    check_requirements(root, all_modules, report)
+    return report.finalize()
+
+
+def review_path(plugin_path: str | Path, profile: str = "plugin") -> ReviewReport:
+    """Dispatch plugin vs adapter review profile."""
+    prof = (profile or "plugin").strip().lower()
+    if prof == "adapter":
+        return review_adapter_directory(plugin_path)
+    return review_plugin_directory(plugin_path)

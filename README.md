@@ -272,7 +272,7 @@ skill_astrbot_plugin_dev_review/
 
 ## MCP 服务器（可选）
 
-内置 MCP 服务器提供：**文档/审核工具（6）** + **AstrBot Runtime 工具（21）**（OpenAPI 局域网控插件、安装、开发测试档案、静态审查器、WebChat smoke 套件）。权威细节见 `mcp/SETUP.md`。
+内置 MCP 服务器提供：**文档/审核工具（6）** + **AstrBot Runtime 工具（22）**（含 `scaffold_plugin` 契约脚手架、`review_path`、安装/smoke 等）。权威细节见 `mcp/SETUP.md`。
 
 快速配置：
 

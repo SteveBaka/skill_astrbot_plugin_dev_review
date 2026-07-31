@@ -146,22 +146,43 @@ async def my_tool(self, ...):
     pass
 ```
 
-### FIX-06: Platform Adapter Built-in Field Conflict
+### FIX-06: Platform Adapter Config Channel & Field Discipline
 
-**Problem**: Including `"enable"` or `"id"` in `default_config_tmpl` causes WebUI rendering issues.
+**Authority**: official `astrbot/core/platform/register.py` + `docs/en/dev/plugin-platform-adapter.md` (FakePlatform example).
+
+**How core works** (do not fight this):
+
+When `default_config_tmpl` is provided, `register_platform_adapter` **auto-fills** missing keys:
+
+- `type` ← adapter name  
+- `enable` ← `False` if absent  
+- `id` ← adapter name if absent  
+
+So authors should list **only custom** fields (token, base_url, …), same as the official FakePlatform sample. Telegram core adapter often omits tmpl entirely and reads `self.config` after core merge.
+
+**Problems to avoid**:
+
+1. **Redundant / conflicting `id` or `enable` in author tmpl or `config_metadata`** — core already manages them; re-declaring (especially in `config_metadata` with wrong hints) has caused WebUI enable-toggle layout bugs in the wild. Prefer **omit**; let core inject.  
+2. **`_conf_schema.json` on an adapter package** — that is the **Star plugin** config channel (插件配置). Platform instances use **消息平台** + `default_config_tmpl` / `config_metadata` only.  
+3. **Shadowing Platform runtime attrs** such as `self.client` / `self.event_queue` in ways that break the base class (prefer `_client`, private names). `Platform.__init__` already sets `self.config`.
 
 ```python
-# ❌ WRONG
-@register_platform_adapter("my_adapter", "My Adapter",
-    default_config_tmpl={"id": "my_adapter", "enable": True, "api_key": ""},
+# ✅ CORRECT — official style (custom fields only; core adds type/enable/id)
+@register_platform_adapter(
+    "my_adapter",
+    "My Adapter",
+    default_config_tmpl={"api_key": "", "base_url": ""},
+    config_metadata={
+        "api_key": {"description": "API Key", "type": "string", "hint": "…", "secret": True},
+        "base_url": {"description": "Service URL", "type": "string", "hint": "…"},
+    },
 )
 
-# ✅ FIX — only custom fields
-@register_platform_adapter("my_adapter", "My Adapter",
-    default_config_tmpl={"api_key": ""},
-    config_metadata={"api_key": {"description": "API Key", "type": "string", "hint": "Your API key", "secret": True}},
-)
+# ❌ Avoid — do not re-list id/enable; do not add _conf_schema.json for adapters
+default_config_tmpl={"id": "…", "enable": True, "api_key": ""}
 ```
+
+**Reviewer** (`profile=adapter`): error if `_conf_schema.json` present; warning if tmpl/metadata redefines `id`/`enable`; error on risky `self.client` / `self.event_queue` stores.
 
 ### FIX-07: ToolExecResult Python 3.12 Incompatibility
 

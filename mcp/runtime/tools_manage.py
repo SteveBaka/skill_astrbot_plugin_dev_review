@@ -75,7 +75,13 @@ def _mutation_or_none(action: str) -> Optional[str]:
 
 
 def astrbot_plugin_config_get(plugin_id: str, redact: bool = True) -> str:
-    """GET /api/v1/plugins/{plugin_id}/config — read-only."""
+    """
+    GET /api/v1/plugins/{plugin_id}/config — read-only.
+
+    redact=True (default): always prefer for non-edit reads.
+    redact=False: only when preparing config_set with real values — not for
+    browsing, logging, or chat. Agent should not keep unredacted dumps.
+    """
     pid = _require_plugin_id(plugin_id)
     if not pid:
         return _dumps({"ok": False, "error": "plugin_id is required", "error_kind": "bad_request"})
@@ -88,7 +94,12 @@ def astrbot_plugin_config_get(plugin_id: str, redact: bool = True) -> str:
         payload["data"] = _redact_secrets(payload["data"])
         payload["note"] = (
             "Sensitive-looking keys redacted (api_key/token/secret/password). "
-            "Pass redact=false only if you need raw values for editing."
+            "redact=false ONLY when editing → config_set; never for casual read/log/chat."
+        )
+    elif result.ok and not redact:
+        payload["warning"] = (
+            "UNREDACTED config (redact=false). Use solely to prepare config_set; "
+            "do not echo secrets to the user chat or commit them."
         )
     return _dumps(payload)
 

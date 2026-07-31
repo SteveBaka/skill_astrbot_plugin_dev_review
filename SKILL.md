@@ -39,28 +39,35 @@ Step 0:   Understand Intent
   ↓
 Step 0.2: Confirm identity (plugin name + author) — GATE before scaffold
   ↓
-Step 0.5: Read official "Always Read" docs (plugin-new + guides)
+Step 0.5: Pre-code read (MANDATORY, minimal set) — official Always-Read
+          + FIX-00/02 lessons + type README/example only as needed
   ↓
 Step 1:   Select Type(s)
   ↓
-Step 1.5: Read type-specific official docs
+Step 1.5: Read type-specific official docs (ONLY the guides for chosen type)
   ↓
-Step 2:   Scaffold & Implement
+Step 2:   Scaffold & Implement (imports/handlers from docs+checklist, not memory)
   ↓
 Step 2.5: Pre-Review Cleanup
   ↓
-Step 3:   Validate Metadata
+Step 3:   Validate Metadata (+ schema / plugin_set implications)
   ↓
-Step 4A:  First-output review (runtime-critical, all new files)
+Step 4A:  First-output review (runtime-critical) — enhance guidance on Star pitfalls
   ↓
-Step 4B:  Full review after features done / user audit request
+Step 4B:  Full review after features done / user audit — still on-demand file reads
   ↓
 Step 5:   Fix if needed → Re-review
+  ↓
+Install / enable / profile plugin_set (user configures in AstrBot Dashboard when needed)
+  ↓
+Smoke ONLY after user confirms Dashboard enable + plugin_set/profile ready
   ↓
 Deliver (no git commit/push without explicit user approval)
 ```
 
 > **Authority order (high → low)**: (1) Official docs under `docs/en/dev/star/**` + adapter doc; (2) this skill; (3) historical pitfall notes. **Never** use legacy `docs/en/dev/plugin.md` as authority (redirect-only / obsolete). When skill conflicts with official docs, **official wins**.
+>
+> **Token rule**: read **on demand** — never bulk-load the whole skill tree. Prefer MCP `search_docs` / single checklist sections. Expand only when review finds a concrete gap.
 
 ### Step 0: Understand User Intent
 
@@ -97,10 +104,11 @@ Suggested name: astrbot_plugin_<slug> — OK?
 - If missing or invalid name, **do not scaffold** until corrected
 - Do not rename an existing published plugin folder without explicit approval
 
-### Step 0.5: Read Official "Always Read" Docs (MANDATORY)
+### Step 0.5: Pre-Code Read (MANDATORY, anti-amnesia for imports/handlers)
 
-Fetch with `webfetch` from:
+**Do not scaffold from model memory.** Before writing `main.py` / handlers, load this **minimal** set (and nothing else unless Step 1.5 needs it):
 
+**A. Official Always-Read** — fetch with `webfetch` from  
 `https://raw.githubusercontent.com/AstrBotDevs/AstrBot/master/docs/en/dev/<path>`
 
 | Path | Content |
@@ -109,7 +117,20 @@ Fetch with `webfetch` from:
 | `star/guides/simple.md` | Minimal plugin, `__init__` |
 | `star/guides/listen-message-event.md` | Commands, filters, hooks (current API only) |
 
+**B. Local FIX lessons (imports + handlers — highest false-load rate)** — read **only** these slices, not the whole skill:
+
+| Read | Why |
+|------|-----|
+| `review/main-file-checklist.md` **§1 import table only** | Canonical import paths (FIX-00) |
+| `review/auto-fix-guide.md` **FIX-00** + **FIX-02** sections only | Wrong import module; handler extra params / `message_str` |
+| `plugin-types/README.md` | Pick type (decision tree) |
+| **One** matching `plugin-types/type*/main.py` **or** `script/astrbot-plugin-demo` | Pattern copy — not all six types |
+
+**C. Explicitly avoid at this step**: full `design_standards/**`, all `agent/**`, all six type trees, entire `auto-fix-guide`, OpenAPI dump, global logs.
+
 **Forbidden as authority**: `docs/en/dev/plugin.md` / `docs/zh/dev/plugin.md` (legacy).
+
+**Generation rule**: every `from astrbot...` and every `@filter.command` / hook signature must be traceable to A+B above (or to a type guide opened in Step 1.5). If unsure → re-fetch official guide or checklist §1 — do not invent paths.
 
 ### Step 1: Select Plugin Type(s)
 
@@ -258,6 +279,8 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 4. **Report only issues** — skip passing checks. If none: `✅ PASS — Phase A/B — 0 issues in N files.`
 5. **Severity**: 🔴 CRITICAL / 🟡 WARNING / 🔵 INFO
 6. **Conclusion**: ✅ PASS (0 critical, ≤2 warnings) / ⚠️ CONDITIONAL / ❌ FAIL
+7. **Review teaches Star mechanics** — for each 🔴/🟡, cite the mechanism (import table, handler binding, config inject, event yield rules, etc.) and the FIX id / official guide section so the agent internalizes AstrBot Star pitfalls — not only “change this line”.
+8. **On-demand reading during review** — start with `review_path` (MCP) or checklists for **touched files only** (Phase A). Open `auto-fix-guide` **only for FIX ids that fired**. Open deep design/agent docs **only** if an issue needs that subsystem. Never re-read all Tier 3 files “for thoroughness”.
 
 ### Output Format
 
@@ -312,13 +335,19 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 ### Project, Gates & Review
 
 - **Identity gate**: before scaffold, confirm plugin `name` = `astrbot_plugin_<slug>` and `author` with the user
-- After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable
+- **Pre-code gate (Step 0.5)**: official Always-Read + import table §1 + FIX-00/02 + one type example — **before** first `main.py`; no coding from bare memory for astrbot imports/handlers
+- After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable; prefer MCP `astrbot_review_path` then open only matching FIX sections
 - After features complete or user audit request, run **Phase B** full-tree review (accuracy, security, completeness)
 - User requests "review"/"audit"/"校验"/"审核" → **Phase B** on ALL files
 - Before review, validate metadata.yaml (`name`/`author` match confirmation)
 - First generation: `repo` empty, user-facing text matches user language
 - `requirements.txt` must list all third-party deps, no `astrbot`/`quart`
 - After splitting main.py, verify all import paths
+- **Dashboard config before smoke** (mandatory UX):
+  1. After **new plugin** install, or after adding/changing anything the user must set in AstrBot UI — including **`_conf_schema.json` fields**, profile **`plugin_set`**, per-tool enable, provider, etc. — **stop and tell the user** to adjust in **AstrBot Dashboard** (plugin config + WebChat profile `plugin_dev_skill` / `plugin_set`).
+  2. **Do not** run `astrbot_smoke_suite` / `chat_probe` until the user confirms those settings are done (or explicitly asks to smoke anyway).
+  3. Agent does **not** silently rewrite live profile `plugin_set` or plugin config to “make smoke pass” unless the user clearly orders that mutation.
+- **Observability scope**: for the plugin under development only — `plugins/failed` + smoke/SSE; **no** system-wide AstrBot log tail in MCP
 - **High-risk ops require explicit user approval before execution** — never do these until the user clearly allows:
   - `git commit`, `git push`, `git push --force` / force-with-lease, `git amend` of shared commits
   - Deleting repos/files en masse, publishing/releasing packages
@@ -350,8 +379,10 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   5. After create: tell user to open **Dashboard → WebChat → select `plugin_dev_skill`** for manual testing.
   6. MCP WebChat smoke: `astrbot_chat_probe` — **default OFF**; call only with `confirm_probe=true` after user allows (or `ASTRBOT_ALLOW_CHAT_PROBE`). Needs **chat-scoped** API key, `username`, default `config_name=plugin_dev_skill`. All probes reuse ONE fixed smoke session (`mcp-smoke-<username>`, override via `session_id` / `ASTRBOT_CHAT_SMOKE_SESSION_ID`) — a single stable Dashboard WebChat entry the user manages there; API keys **cannot** delete user-owned sessions (creator check, source-verified), so never attempt auto-deletion or system-scope workarounds. Prefer user-driven Dashboard chat for primary testing.
   6b. `astrbot_chat_sessions_cleanup` — **webchat-platform-only** deletion with verification against the username's session list (other platforms → `scope_violation`); needs mutations + `confirm_cleanup=true` + user-reviewed list; can only delete sessions created via the API key itself.
-  6c. `astrbot_review_path(path)` — AST static review, no AstrBot needed; findings link FIX rules in `review/auto-fix-guide.md`. Run it **before** install_path and fix all `error`-severity findings first; it automates only the statically decidable subset — Phase A/B LLM review still applies.
-  6d. `astrbot_smoke_suite(plugin_id, confirm=true, username=…)` — composite smoke: status → auto-derived cases from components (non-admin commands info-first, hook probe, llm_tool soft probe) → sequential probes into the fixed smoke session → post-run failed re-check → aggregated verdict. Same gate as chat_probe (user allow + confirm); admin commands need `include_admin=true`; custom cases via `extra_messages="a||b"`. Recommended loop: review_path → install_path → smoke_suite.
+  6c. `astrbot_scaffold_plugin(name, author, plugin_type=command|llm_tool|session|cron|hook|web|agent|adapter, …)` — contracts skeleton; **must** finish with review error=0. `adapter` = frame only (no WebChat smoke until you provide a live adapter). BUSINESS edits only after.
+  6d. `astrbot_review_path(path, profile=plugin|adapter)` — AST review (shared contracts); FIX-03 hooks on plugin profile; **FIX-06** on adapter (`id`/`enable` ban, **no `_conf_schema.json`**, no Platform attr shadow). Before install_path; fix all `error` first.
+  6d-adapter: Follow official `astrbot/core/platform/register.py` + plugin-platform-adapter.md — custom fields only in tmpl (core injects type/enable/id); **never** Star `_conf_schema.json` for adapters.
+  6e. `astrbot_smoke_suite(plugin_id, confirm=true, username=…)` — only **after** user configures Dashboard (enable, profile `plugin_set`, `_conf_schema`). Loop: scaffold → review_path → install_path → **user Dashboard** → smoke_suite.
   7. Do **not** auto-bind global config-routes unless user explicitly requests.
 - **Privacy — configs**:
   1. After install: only **Dashboard checklists** by plugin type (`astrbot_post_install_hints` / install response `dashboard_hints`) — **no** automatic `plugin_config_get` or full profile reads.
@@ -379,23 +410,33 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 
 ## Token Efficiency Guide
 
-This skill contains 50+ files. Reading all of them wastes tokens. Follow these rules:
+This skill contains 50+ files. **Reading all of them is forbidden by default.**  
+Goal: stronger Star understanding **and** low token/time cost via **strict on-demand reads**.
+
+### Hard caps
+
+| Phase | Max extra local files beyond Step 0.5 / current checklists | Notes |
+|-------|------------------------------------------------------------|--------|
+| Scaffold / first implement | 0–2 Tier-2 files | Plus **one** type example only |
+| Phase A review | MCP `review_path` first; then only FIX sections that fired | No full `auto-fix-guide` dump |
+| Phase B | Checklists + files under audit; deep docs only per open issue | Still no “read entire skill” |
+| Smoke prep | SETUP smoke gates + user Dashboard reminder | No log APIs |
 
 ### Reading Priority (Tiered)
 
-**Tier 0 — Official docs** (mandatory):
-- Always: `star/plugin-new.md`, `star/guides/simple.md`, `star/guides/listen-message-event.md`
-- By type: other files under `docs/en/dev/star/guides/`
-- Adapters MUST: `https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/plugin-platform-adapter.md`
-- Publish / market: `https://docs.astrbot.app/dev/star/plugin-publish.html` (and EN twin); Cloud: `https://cloud.astrbot.app`
-- OpenAPI browse: `https://docs.astrbot.app/scalar.html` (machine JSON: `/openapi.json`)
+**Tier 0 — Official docs** (Step 0.5 Always-Read; then **only** type guides you selected):
+- Always (before code): `star/plugin-new.md`, `star/guides/simple.md`, `star/guides/listen-message-event.md`
+- By type (Step 1.5 only): matching file under `docs/en/dev/star/guides/`
+- Adapters MUST: `plugin-platform-adapter.md`
+- Publish / market / OpenAPI: only when shipping or doing API work
 - **Ignore as authority**: `docs/en/dev/plugin.md` (legacy redirect)
 
-**Tier 1 — Core rules** (always read, ~300 lines):
-- `SKILL.md` — this file (Mandatory Rules + Workflow)
-- `review/main-file-checklist.md` §1 — Import reference table (35+ entries)
+**Tier 1 — Core rules** (session entry + pre-code):
+- `SKILL.md` — Mandatory Rules + Workflow + this guide
+- `review/main-file-checklist.md` **§1 only** until a review needs more sections
+- FIX-00 / FIX-02 from `review/auto-fix-guide.md` at pre-code (Step 0.5)
 
-**Tier 2 — Task-specific** (pick 1-2 based on intent):
+**Tier 2 — Task-specific** (**pick 1–2**, never the whole column):
 
 | Task | File |
 |------|------|
@@ -403,45 +444,32 @@ This skill contains 50+ files. Reading all of them wastes tokens. Follow these r
 | LLM tools | `agent/tools.md` |
 | Cron | `agent/cron.md` |
 | Hooks | `agent/hooks.md` |
-| Config | `references/conf-schema.md` |
+| Config / `_conf_schema` | `references/conf-schema.md` |
 | WebUI | `webui/plugin-pages.md` |
 | Split main.py | `references/modular-split.md` |
 | Platform adapter | `platform_adapters/adapter_interface.md` |
-| Storage | `storage_utils/kv_storage.md` + `storage_utils/file_storage.md` |
+| Storage | `storage_utils/kv_storage.md` and/or `file_storage.md` as needed |
 | Image rendering | `design_standards/visual_utils.md` |
 
-**Tier 3 — Reference** (read when needed):
+**Tier 3 — Reference** (open **one file for one question**; default closed):
 
 | File | Purpose |
 |------|---------|
 | `references/core-concepts.md` | API quick index |
-| `references/best-practices.md` | Best practices |
-| `references/plugin-patterns.md` | 10 implementation patterns |
-| `agent/official-tools.md` | Built-in tool list |
-| `agent/subagents.md` | Sub-agent handoff |
-| `agent/conversation.md` | Prompt injection strategies |
-| `agent/persona-control.md` | Persona CRUD |
-| `agent/context-compression.md` | Compression parameters |
-| `agent/agent-runner.md` | Agent Runner (v4.7.0+) |
-| `agent/sandbox.md` | Sandbox runtime |
-| `agent/register-skill.md` | Skill registration |
-| `design_standards/architecture_overview.md` | AstrBot core architecture |
-| `design_standards/event_flow.md` | Message flow model |
-| `design_standards/context_usage.md` | Context object API |
-| `design_standards/sandbox.md` | Sandbox storage mounting |
-| `messages/model.md` | AstrBotMessage structure |
-| `messages/events.md` | AstrMessageEvent API |
-| `messages/umo.md` | Unified Message Origin |
-| `platform_adapters/message_conversion.md` | Message conversion |
-| `platform_adapters/telegram_media_group.md` | Telegram media groups |
-| `storage_utils/plugin-i18n.md` | Internationalization |
-| `review/general-file-checklist.md` | General code review |
-| `plugin-types/REVIEW-REPORTS.md` | Review report examples |
-| `plugin-types/type*/main.py` | Plugin type examples |
+| `references/best-practices.md` | Best practices / install true-update |
+| `references/plugin-patterns.md` | Patterns (prefer type example first) |
+| `agent/*` (except tools/cron/hooks above) | Only if implementing that subsystem |
+| `design_standards/*` | Only if debugging architecture-level issues |
+| `messages/*` / `platform_adapters/*` | Only if touching message/adapter code |
+| `review/general-file-checklist.md` | Phase B / non-main files |
+| `plugin-types/type*/main.py` | **One** type; not all six |
 
 ### With MCP
 
-Use `search_docs(query)` to find content across all 46 documents without reading entire files.
+- `search_docs(query)` / `get_doc` — prefer over reading multi-file trees  
+- `astrbot_review_path` — first pass static gate; then FIX-guided reads only  
+- `validate_import` — when a single symbol is doubtful  
+- Do **not** fetch OpenAPI or full logs for ordinary plugin codegen
 
 ---
 

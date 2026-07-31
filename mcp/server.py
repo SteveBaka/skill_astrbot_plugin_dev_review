@@ -21,6 +21,10 @@ from mcp.server.fastmcp import FastMCP
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SKILL_ROOT = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 
+# Ensure `import runtime` works for contracts / optional runtime tools
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
 # Transport config from env
 TRANSPORT = os.environ.get("MCP_TRANSPORT", "stdio")
 SSE_HOST = os.environ.get("MCP_HOST", "localhost")
@@ -82,40 +86,40 @@ DOCS_INDEX = discover_docs(SKILL_ROOT)
 ALL_CATEGORIES = sorted(DOCS_INDEX.keys())
 TOTAL_DOCS = sum(len(v) for v in DOCS_INDEX.values())
 
-# Import reference table (from review/main-file-checklist.md §1)
-IMPORT_TABLE = {
-    "logger": ("from astrbot.api import logger", "from astrbot.api.logger import logger"),
-    "filter": ("from astrbot.api.event import filter", "from astrbot.api import filter"),
-    "AstrMessageEvent": ("from astrbot.api.event import AstrMessageEvent", "from astrbot.api import AstrMessageEvent"),
-    "Star": ("from astrbot.api.star import Star", "from astrbot.api import Star"),
-    "Context": ("from astrbot.api.star import Context", "from astrbot.api import Context"),
-    "StarTools": ("from astrbot.api.star import StarTools", "from astrbot.api import StarTools"),
-    "AstrBotConfig": ("from astrbot.api import AstrBotConfig", None),
-    "ProviderRequest": ("from astrbot.api.provider import ProviderRequest", "from astrbot.api import ProviderRequest"),
-    "LLMResponse": ("from astrbot.api.provider import LLMResponse", "from astrbot.api import LLMResponse"),
-    "Comp": ("from astrbot.api.message_components import Comp", "from astrbot.api import Comp"),
-    "Plain": ("from astrbot.api.message_components import Plain", "from astrbot.api import Plain"),
-    "Image": ("from astrbot.api.message_components import Image", "from astrbot.api import Image"),
-    "MessageChain": ("from astrbot.api.event import MessageChain", "from astrbot.api import MessageChain"),
-    "session_waiter": ("from astrbot.core.utils.session_waiter import session_waiter", "from astrbot.api import session_waiter"),
-    "SessionController": ("from astrbot.core.utils.session_waiter import SessionController", None),
-    "FunctionTool": ("from astrbot.core.agent.tool import FunctionTool", "from astrbot.api import FunctionTool"),
-    "ToolExecResult": ("from astrbot.core.agent.tool import ToolExecResult", None),
-    "ToolSet": ("from astrbot.core.agent.tool import ToolSet", None),
-    "ContextWrapper": ("from astrbot.core.agent.run_context import ContextWrapper", None),
-    "AstrAgentContext": ("from astrbot.core.astr_agent_context import AstrAgentContext", None),
-    "BaseAgentRunHooks": ("from astrbot.core.agent.hooks import BaseAgentRunHooks", None),
-    "Platform": ("from astrbot.api.platform import Platform", "from astrbot.api import Platform"),
-    "PlatformMetadata": ("from astrbot.api.platform import PlatformMetadata", None),
-    "AstrBotMessage": ("from astrbot.api.platform import AstrBotMessage", None),
-    "MessageMember": ("from astrbot.api.platform import MessageMember", None),
-    "MessageType": ("from astrbot.api.platform import MessageType", None),
-    "register_platform_adapter": ("from astrbot.core.platform.register import register_platform_adapter", None),
-    "At": ("from astrbot.api.message_components import At", None),
-    "Record": ("from astrbot.api.message_components import Record", None),
-    "Video": ("from astrbot.api.message_components import Video", None),
-    "html_renderer": ("from astrbot.api import html_renderer", None),
-}
+# Import reference: single source mcp/runtime/contracts.py (checklist §1 + FIX-00)
+def _load_import_table():
+    try:
+        from runtime.contracts import IMPORT_TABLE, fuzzy_import_symbols, lookup_import
+
+        return IMPORT_TABLE, lookup_import, fuzzy_import_symbols
+    except Exception:
+        # Fallback if runtime package path broken — minimal FIX-00 set
+        t = {
+            "logger": (
+                "from astrbot.api import logger",
+                "from astrbot.api.logger import logger",
+            ),
+            "filter": (
+                "from astrbot.api.event import filter",
+                "from astrbot.api import filter",
+            ),
+            "Star": (
+                "from astrbot.api.star import Star",
+                "from astrbot.api import Star",
+            ),
+        }
+
+        def _lookup(symbol: str):
+            return t.get((symbol or "").strip())
+
+        def _fuzzy(symbol: str, limit: int = 5):
+            s = (symbol or "").strip().lower()
+            return [k for k in t if s in k.lower()][:limit]
+
+        return t, _lookup, _fuzzy
+
+
+IMPORT_TABLE, _lookup_import, _fuzzy_import_symbols = _load_import_table()
 
 
 def _resolve_path(category: str, doc_name: str) -> str:
@@ -234,23 +238,27 @@ def validate_import(symbol: str) -> str:
         symbol: The symbol name to check (e.g. 'logger', 'filter', 'Star', 'FunctionTool')
     """
     symbol = symbol.strip()
-    if symbol in IMPORT_TABLE:
-        correct, wrong = IMPORT_TABLE[symbol]
+    hit = _lookup_import(symbol)
+    if hit:
+        correct, wrong = hit
         result = f"**{symbol}**\n\n✅ Correct: `{correct}`"
         if wrong:
             result += f"\n❌ Common WRONG: `{wrong}`"
         return result
 
-    # Fuzzy match
-    matches = [k for k in IMPORT_TABLE if symbol.lower() in k.lower()]
+    matches = _fuzzy_import_symbols(symbol, limit=5)
     if matches:
         lines = [f"Symbol '{symbol}' not found exactly. Did you mean:"]
-        for m in matches[:5]:
-            correct, wrong = IMPORT_TABLE[m]
-            lines.append(f"- `{m}` → `{correct}`")
+        for m in matches:
+            pair = _lookup_import(m)
+            if pair:
+                lines.append(f"- `{m}` → `{pair[0]}`")
         return "\n".join(lines)
 
-    return f"Symbol '{symbol}' not in the reference table. Available: {', '.join(sorted(IMPORT_TABLE.keys()))}"
+    return (
+        f"Symbol '{symbol}' not in the reference table. "
+        f"Available: {', '.join(sorted(IMPORT_TABLE.keys()))}"
+    )
 
 
 @mcp.tool()

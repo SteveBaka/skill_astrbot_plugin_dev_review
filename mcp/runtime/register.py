@@ -22,6 +22,7 @@ from typing import Any
 
 from . import (
     review_static,
+    scaffold_plugin,
     tools_chat,
     tools_impl,
     tools_install,
@@ -94,8 +95,14 @@ def register_runtime_tools(mcp: Any) -> None:
         """
         [RUNTIME P1] Get plugin configuration (GET .../config). Read-only.
 
-        redact=true (default) masks api_key/token/secret/password-like fields.
-        Use redact=false only when preparing an edit for config_set.
+        redact=true (DEFAULT, preferred): masks api_key/token/secret/password-like
+        fields. Use for inspection, debugging structure, or any non-edit read.
+
+        redact=false: ONLY when you are about to edit and then call config_set
+        (need raw values). Do NOT use for casual dumps, logs, chat replies, or
+        "just looking". Never commit or paste unredacted output into the repo.
+        Prefer: user names keys → config_get(redact=false) → edit → config_set
+        → do not retain raw payload in agent memory longer than needed.
         """
         return tools_manage.astrbot_plugin_config_get(plugin_id=plugin_id, redact=redact)
 
@@ -364,25 +371,53 @@ def register_runtime_tools(mcp: Any) -> None:
             max_delete=max_delete,
         )
 
+    # ── P2+ scaffold (contracts + review invariant) ────────────
+
+    @mcp.tool()
+    def astrbot_scaffold_plugin(
+        name: str,
+        author: str,
+        plugin_type: str = "command",
+        output_dir: str = "",
+        command: str = "",
+        display_name: str = "",
+        desc: str = "",
+        overwrite: bool = False,
+    ) -> str:
+        """
+        [RUNTIME P2+] Scaffold from shared contracts (multi-type + adapter frame).
+
+        plugin_type: command|llm_tool|session|cron|hook|web|agent|adapter
+        Star plugins: metadata + main + requirements; review profile=plugin.
+        adapter: framework-only Platform skeleton; review profile=adapter (FIX-06);
+        NOT WebChat-smokeable — supply a working adapter later for E2E.
+        **Invariant:** fresh scaffold review error count must be 0.
+        Confirm name/author (or adapter id) with the user first. Dashboard
+        config before any smoke for Star plugins.
+        """
+        return scaffold_plugin.astrbot_scaffold_plugin(
+            name=name,
+            author=author,
+            plugin_type=plugin_type,
+            output_dir=output_dir,
+            command=command,
+            display_name=display_name,
+            desc=desc,
+            overwrite=overwrite,
+        )
+
     # ── P2+ static reviewer (no AstrBot needed) ────────────────
 
     @mcp.tool()
-    def astrbot_review_path(path: str) -> str:
+    def astrbot_review_path(path: str, profile: str = "plugin") -> str:
         """
-        [RUNTIME P2+] AST static review of a local plugin dir (no AstrBot needed).
+        [RUNTIME P2+] AST static review of a local plugin or adapter dir.
 
-        Deterministic checks mapped to review/auto-fix-guide.md FIX rules:
-        wrong imports (FIX-00), sync requests (FIX-04), deprecated filter APIs
-        (FIX-21), dataclass mutable defaults (FIX-20), Star __init__ /
-        super().__init__ (FIX-01), command docstrings (FIX-17), handler params
-        (FIX-02), StarTools context (FIX-27), namespace collisions (FIX-26),
-        unused imports (FIX-23), requirements.txt cross-check (REQ-01),
-        metadata required fields / naming / PEP 440 (META-*).
-        errors block install; warnings likely break behavior; info is hygiene.
-        Run before astrbot_plugin_install_path; judgment-level review stays
-        with the Phase A/B LLM workflow.
+        profile=plugin (default): Star plugin FIX/META/REQ checks + FIX-03 hooks.
+        profile=adapter: Platform subclass required methods + FIX-06 reserved attrs.
+        No AstrBot instance needed. errors block install; judgment stays Phase A/B.
         """
-        report = review_static.review_plugin_directory(path)
+        report = review_static.review_path(path, profile=profile)
         return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
 
     # ── P3+ smoke suite (composite) ────────────────────────────

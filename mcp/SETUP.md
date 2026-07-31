@@ -107,14 +107,14 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_plugin_list` | **[P0]** GET `/api/v1/plugins` (read-only) |
 | `astrbot_plugin_failed` | **[P0]** GET `/api/v1/plugins/failed` (read-only) |
 | `astrbot_plugin_get` | **[P0]** GET `/api/v1/plugins/{plugin_id}` (read-only) |
-| `astrbot_plugin_config_get` | **[P1]** GET plugin config (read; optional redact) |
+| `astrbot_plugin_config_get` | **[P1]** GET plugin config — **`redact=true` default**; `redact=false` **only** when about to `config_set` (not casual read/log/chat) |
 | `astrbot_plugin_config_schema` | **[P1]** GET plugin config schema (read) |
 | `astrbot_plugin_config_set` | **[P1]** PUT plugin config (**mutations**) |
 | `astrbot_plugin_set_enabled` | **[P1]** PATCH enable/disable (**mutations**) |
 | `astrbot_plugin_reload` | **[P1]** POST reload (+ failed endpoint) (**mutations**) |
 | `astrbot_plugin_uninstall` | **[P2]** DELETE uninstall (**mutations** + confirm; **default keep config/data**) |
 | `astrbot_plugin_pack_preview` | **[P2]** Dry-run local ZIP pack (gitignore; **no upload**) |
-| `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → `install/upload` → enable → reload → failed (**mutations**) |
+| `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → upload → enable → reload → failed (**mutations**; optional `force_refresh`) |
 | `astrbot_providers_brief` | **[P2.5]** Provider id/name list (no secrets) |
 | `astrbot_config_profiles_brief` | **[P2.5]** Profile names/ids only |
 | `astrbot_post_install_hints` | **[P2.5]** Dashboard checklist (no config reads) |
@@ -122,8 +122,9 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_chat_sessions_brief` | **[P3]** List WebChat sessions metadata (chat scope) |
 | `astrbot_chat_probe` | **[P3]** Opt-in SSE smoke via `POST /chat` (**confirm_probe**; fixed reusable smoke session) |
 | `astrbot_chat_sessions_cleanup` | **[P3]** Delete **webchat-only** sessions (**mutations** + confirm; cannot delete Dashboard-user sessions) |
-| `astrbot_review_path` | **[P2+]** AST static review of a local plugin dir (FIX-rule mapped; no AstrBot needed) |
-| `astrbot_smoke_suite` | **[P3+]** Composite smoke: status → auto-derived cases → probes → crash re-check (**confirm**) |
+| `astrbot_scaffold_plugin` | **[P2+]** Scaffold `command\|llm_tool\|session\|cron\|hook\|web\|agent\|adapter` from contracts; review error=0 invariant |
+| `astrbot_review_path` | **[P2+]** AST review `profile=plugin\|adapter` (FIX-mapped; contracts single source) |
+| `astrbot_smoke_suite` | **[P3+]** Composite smoke after **user** Dashboard config (enable / plugin_set / schema) |
 
 CLI check (if `kilo` is installed):
 
@@ -258,6 +259,7 @@ astrbot_ensure_plugin_dev_skill(plugin_id, provider_id, confirm_create=true, exi
 | Exists | User chooses `abort` / `recreate` (+ delete confirm) / `rename_old` |
 | Chat smoke | **Not** done by this tool; MCP auto-chat only if user later allows |
 | Privacy | No auto `plugin_config_get`; install only attaches Dashboard hints |
+| `config_get` redact | **Default true.** `redact=false` **only** when immediately editing via `config_set`; never for browse/log/chat; do not commit raw secrets |
 
 ### Chat probe (P3) — opt-in smoke
 
@@ -303,9 +305,24 @@ OpenAPI body: `{ "delete_config": bool, "delete_data": bool }`.
 
 Agent must not uninstall production plugins during routine tests; use a dedicated sandbox only with user permission.
 
+### Scaffold (P2+) — contracts + review invariant
+
+`astrbot_scaffold_plugin(name, author, plugin_type=..., output_dir=...)`:
+
+**Types:** `command` | `llm_tool` | `session` | `cron` | `hook` | `web` | `agent` | `adapter`
+
+1. Validates name/author (adapter: id slug)  
+2. Writes tree from **`runtime/contracts.py`**  
+3. Review: Star → `profile=plugin` (+ FIX-03); **adapter** → `profile=adapter` (FIX-06)  
+4. **Invariant:** fresh scaffold **0 review errors**
+
+**adapter** = framework only (not WebChat-smokeable). Full adapter E2E when you provide a working adapter.
+
+Confirm name/author first. Star: BUSINESS → review → install → **user Dashboard** → smoke.
+
 ### Static review (P2+) — codified FIX rules
 
-`astrbot_review_path(path)` runs deterministic AST checks against a local plugin directory — **no AstrBot instance needed**. Each finding carries a `rule` id linking `review/auto-fix-guide.md`:
+`astrbot_review_path(path, profile=plugin|adapter)` — **no AstrBot instance needed**. Import/FIX tables in `runtime/contracts.py`. Adapter profile adds FIX-06 / ADAPT-*. Findings link `review/auto-fix-guide.md`:
 
 | Severity | Meaning | Examples |
 |----------|---------|----------|
@@ -316,6 +333,8 @@ Agent must not uninstall production plugins during routine tests; use a dedicate
 Recommended order: `astrbot_review_path` → fix errors → `astrbot_plugin_install_path` → `astrbot_smoke_suite`. Judgment-level review (architecture, logic) stays with the Phase A/B LLM workflow — this tool only automates the statically decidable subset.
 
 ### Smoke suite (P3+) — composite pipeline
+
+**Dashboard-first gate (product rule):** After installing a **new** plugin, or after adding/changing **`_conf_schema.json`**, profile **`plugin_set`**, per-tool enable, or other UI-only settings, the agent must **remind the user** to configure them in **AstrBot Dashboard** (plugin config + WebChat profile such as `plugin_dev_skill`). Run `astrbot_smoke_suite` / `chat_probe` **only after** the user confirms those settings (or explicitly asks to smoke without waiting). Do not silently mutate live `plugin_set` just to pass smoke.
 
 `astrbot_smoke_suite(plugin_id, confirm=true, username=...)` codifies the proven manual loop:
 

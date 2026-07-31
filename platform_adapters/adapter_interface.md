@@ -136,49 +136,35 @@ class MyPlatformEvent(AstrMessageEvent):
 - `commit_event()` submits events to the queue; do not omit it
 - Event classes must implement the `send()` method, and call `await super().send(message)` at the end
 
-## config_metadata: Avoid Built-in Field Conflicts
+## Config: follow official `register_platform_adapter`
 
-<!-- Source: Real-world bug from astrbot_plugin_synochat_adapter — "enable" in default_config_tmpl caused WebUI toggle position swap -->
+**Source of truth**: [`astrbot/core/platform/register.py`](https://github.com/AstrBotDevs/AstrBot/blob/master/astrbot/core/platform/register.py) and [plugin-platform-adapter.md](https://docs.astrbot.app/dev/plugin-platform-adapter.html) (FakePlatform).
 
-AstrBot automatically manages certain fields for **all** platform adapters. These are **built-in fields** that you must NOT redefine in `config_metadata`:
+### Core auto-fills (do not re-invent)
 
-| Built-in Field | Purpose |
-|---------------|---------|
-| `id` | Adapter instance ID (auto-generated) |
-| `enable` | Whether the adapter is enabled (auto-managed by AstrBot) |
+If `default_config_tmpl` is not `None`, the decorator ensures:
 
-### The Problem
+| Key | If missing, core sets |
+|-----|------------------------|
+| `type` | adapter name |
+| `enable` | `False` |
+| `id` | adapter name |
 
-If you include `"enable"` or `"id"` in your `default_config_tmpl`, AstrBot's WebUI may:
-- Render the "Enable" toggle in the wrong position
-- Show incorrect hint text (e.g., borrowing hints from other adapters)
-- Cause the adapter name and enable switch to swap positions
+**Author practice (official sample):** only put **custom** keys (`token`, `username`, …) in `default_config_tmpl`. Prefer **not** listing `id` / `enable` yourself so WebUI and core stay consistent. Re-listing them is redundant; wrong `config_metadata` for those keys has caused toggle/layout glitches historically.
 
-### ❌ WRONG: Including built-in fields in default_config_tmpl
+### Do NOT use `_conf_schema.json` for adapters
 
-```python
-@register_platform_adapter(
-    "my_adapter",
-    "My Adapter",
-    default_config_tmpl={
-        "id": "my_adapter",       # ❌ REMOVE — AstrBot manages this
-        "enable": True,           # ❌ REMOVE — AstrBot manages this
-        "api_key": "",            # ✅ Custom field
-        "base_url": "",           # ✅ Custom field
-    },
-    config_metadata={...},
-)
-```
+`_conf_schema.json` is for **Star plugins** (插件配置). Platform instances are configured under **消息平台** via `default_config_tmpl` + `config_metadata` only.
 
-### ✅ CORRECT: Only custom fields in default_config_tmpl
+### ✅ CORRECT (matches official FakePlatform style)
 
 ```python
 @register_platform_adapter(
     "my_adapter",
     "My Adapter",
     default_config_tmpl={
-        "api_key": "",            # ✅ Custom field
-        "base_url": "",           # ✅ Custom field
+        "api_key": "",
+        "base_url": "",
     },
     config_metadata={
         "api_key": {
@@ -194,6 +180,17 @@ If you include `"enable"` or `"id"` in your `default_config_tmpl`, AstrBot's Web
         },
     },
 )
+```
+
+### ❌ Avoid
+
+```python
+default_config_tmpl={
+    "id": "my_adapter",   # core will set if omitted
+    "enable": True,       # core will set if omitted
+    "api_key": "",
+}
+# and never ship _conf_schema.json in an adapter package
 ```
 
 ### config_metadata Type and Hint Rules
