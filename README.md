@@ -3,7 +3,8 @@
 > 为你的 AstrBot 创造更多可能。
 
 ```
-⚠️ 本 Skill 为了做到更好的开发适配性，而采用了更多的权限（如： 通过 MCP 连接至 Astrbot openAPI ）。如果担心造成不可逆的破坏性修改，请尽量不要给 LLM 使用 MCP 的完整权限或不使用 MCP。
+⚠️ 本 Skill 为了做到更好的开发适配性，而采用了更多的权限（如： 通过 MCP 连接至 Astrbot openAPI ）。
+如果担心造成不可逆的破坏性修改，请尽量不要给 LLM 使用 MCP 的完整权限或不使用 MCP。
 ```
 
 > 如果你有更好的建议和开发过程中遇到的问题，欢迎你将**隐私数据**脱敏后提交 `Issues` 或 `Pull Request` ，这样可以为这个 Skill 提供莫大的帮助，我也会尽全力的去优化。
@@ -129,6 +130,64 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
 > **路径必须以可用配置为准**：`python3` 与 `server.py` 均用**绝对路径**。部分客户端（如 Kilo）启动 MCP 时以工作区根目录解析相对脚本路径，**不会**把相对 `server.py` 接到 `cwd` 下，会导致 `MCP error -32000: Connection closed`。
+>
+> **装进 AstrBot 后的推荐用法**：本 Skill 作为插件上传后位于 `/AstrBot/data/skills/skill_astrbot_plugin_dev_review/`。用 **AstrBot 自带 MCP 客户端**（设置 → MCP）注册本服务器的 stdio 命令即可，`ASTRBOT_BASE_URL` 填 `http://127.0.0.1:6185`（同实例，无需走网络）。模板与安全说明见 `mcp/SETUP.md` §4b。
+
+### 注：在 AstrBot 中使用
+
+> 本节只讲 **MCP 在 AstrBot 内的用法**（AstrBot 自带 MCP 客户端，v3.5.0+）。适用「Skill 已作为插件上传进 AstrBot」的场景；本机 IDE/Kilo 用法见上方「快速配置」。
+
+**1) 上传 Skill**
+把本仓库（或 GitHub zip）作为 Skill 上传到 AstrBot，安装后位于：
+
+```text
+/AstrBot/data/skills/skill_astrbot_plugin_dev_review/
+├── SKILL.md
+└── mcp/
+    ├── run.py      ← 自举启动器（无需手动建 venv）
+    ├── server.py
+    └── ...
+```
+
+**2) 添加 MCP 服务器（AstrBot 设置 → MCP）**
+
+```json
+{
+  "command": "python3",
+  "args": [
+    "/AstrBot/data/skills/skill_astrbot_plugin_dev_review/mcp/run.py"
+  ],
+  "env": {
+    "ASTRBOT_BASE_URL": "http://127.0.0.1:6185",
+    "ASTRBOT_TOKEN": "your-dashboard-api-key",
+    "ASTRBOT_ALLOW_MUTATIONS": "false",
+    "ASTRBOT_ALLOW_CHAT_PROBE": "false",
+    "ASTRBOT_CHAT_USERNAME": "your_webchat_user",
+    "ASTRBOT_CHAT_CONFIG_NAME": "plugin_dev_skill"
+  }
+}
+```
+
+- `command` 必须是白名单内的 `python3`（AstrBot 禁止 `bash/sh` 与 `-c` 内联）。
+- `args` 指向 **`mcp/run.py`**（不是 server.py）：首次被拉起时自动建 `.venv` + 装依赖，之后直跑 `server.py`；若容器系统 Python 已自带 `mcp` 依赖，则**连 venv 都省了**。
+- `ASTRBOT_BASE_URL` 填 `127.0.0.1:6185`（同实例自调，不走网络）。
+
+**3) 测试连接**
+- 首次「测试连接」约 30–60s（建 venv / 装依赖），之后秒过。
+- 连接成功后，AstrBot 的 LLM 可直接调用本 Skill 的 **6 个文档工具 + 22 个 runtime 工具**。
+
+**4) 失败排查（快速）**
+| 现象 | 处理 |
+|------|------|
+| `No such file or directory: '.../.venv/bin/python3'` | 用 `run.py` 入口（会自动创建），或 `docker exec astrbot rm -rf .../mcp/.venv` 后重试 |
+| `No module named 'mcp.server.fastmcp'` | 走 `run.py`（自举）而非直接 `server.py`；或确认容器网络可访问 PyPI |
+| `Permission denied: '.../.venv/bin/python3'` | `.venv` 为异机创建，删除后在**容器内**重建（root 下直接 `python3 -m venv`） |
+| 连接成功但 `astrbot_*` 工具 `not_configured` | 检查 `ASTRBOT_TOKEN` / `ASTRBOT_BASE_URL` 是否已填 |
+
+**5) 安全**
+- 远程/共享环境保持 `ASTRBOT_ALLOW_MUTATIONS=false`（只读）；确需写操作仅在可信实例开启。
+- `ASTRBOT_TOKEN` 只存在 AstrBot WebUI 配置里，**不要**提交进仓库。
+- 详细模板与说明见 `mcp/SETUP.md` §4b。
 
 ### Runtime 环境变量一览
 
@@ -431,6 +490,7 @@ skill_astrbot_plugin_dev_review/
 │
 └── mcp/                                  # 内置 MCP 服务器
     ├── server.py                         # MCP 入口（Docs + 可选 Runtime）
+    ├── run.py                            # 自举启动器（AstrBot 内 MCP 零配置入口，自动建 venv）
     ├── requirements.txt                  # MCP 依赖（httpx / pathspec / pytest）
     ├── SETUP.md                          # 安装与 Runtime 权威说明
     ├── OPENAPI-SYNC.md                   # OpenAPI 快照与漂移记录

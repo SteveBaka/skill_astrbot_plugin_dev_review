@@ -412,6 +412,94 @@ MCP_TRANSPORT=sse MCP_PORT=3000 .venv/bin/python3 server.py
 
 Client URL: `http://localhost:3000/sse`.
 
+> **推荐用法**：当本 Skill 以插件形式**上传并安装到 AstrBot 内**时，直接用 AstrBot 自带 MCP 客户端注册本服务器（stdio），无需 SSE——见下一节「在 AstrBot 内注册」。
+
+## 4b. Register inside AstrBot (recommended)
+
+AstrBot ships an **MCP client** (v3.5.0+): the WebUI lets you add an MCP server by
+giving a `command` + `args` (+ optional `env`), and AstrBot spawns it as a local
+stdio process. Because this Skill is **installed into AstrBot as a plugin**, its
+`mcp/` folder is already on the same host — point the MCP client at the local
+files instead of remote SSE.
+
+**Assumed install path (Docker/source data dir):**
+
+```
+/AstrBot/data/skills/skill_astrbot_plugin_dev_review/
+├── SKILL.md
+└── mcp/
+    ├── run.py        ← self-bootstrap launcher (recommended entry)
+    ├── server.py
+    └── ...
+```
+
+### 1) Zero-setup: register via `run.py` (recommended, no manual venv)
+
+`mcp/run.py` is a **self-bootstrapping launcher**: the first time AstrBot spawns
+it, it creates `.venv` + installs `requirements.txt` automatically (falling back
+to the container's system Python if `venv` is unavailable), then execs
+`server.py`. Later spawns skip straight to `server.py`.
+
+AstrBot's MCP stdio allowlist already permits `python3` (and blocks `bash`/`sh`
+and `-c`), so this is the sanctioned shape:
+
+```json
+{
+  "command": "python3",
+  "args": [
+    "/AstrBot/data/skills/skill_astrbot_plugin_dev_review/mcp/run.py"
+  ],
+  "env": {
+    "ASTRBOT_BASE_URL": "http://127.0.0.1:6185",
+    "ASTRBOT_TOKEN": "your-dashboard-api-key",
+    "ASTRBOT_AUTH_MODE": "api_key",
+    "ASTRBOT_HTTP_TIMEOUT": "15",
+    "ASTRBOT_ALLOW_MUTATIONS": "false",
+    "ASTRBOT_ALLOW_CHAT_PROBE": "false",
+    "ASTRBOT_CHAT_USERNAME": "your_webchat_user",
+    "ASTRBOT_CHAT_CONFIG_NAME": "plugin_dev_skill"
+  }
+}
+```
+
+> First "test connection" may take 30–60 s while it builds the venv and installs
+> deps; subsequent tests are instant. No `docker exec` needed.
+
+### 1b) Manual venv (alternative, only if you prefer)
+
+```bash
+docker exec astrbot bash -c "cd /AstrBot/data/skills/skill_astrbot_plugin_dev_review/mcp && \
+  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+# then register with command = ".../.venv/bin/python3", args = [ ".../server.py" ]
+```
+
+> **`.venv` is gitignored** — a GitHub-downloaded skill zip will **not** contain it.
+> The `run.py` launcher (step 1) handles this automatically; the manual path only
+> matters if you skip the launcher.
+
+### 2) Register the MCP server in AstrBot WebUI
+
+`AstrBot 设置 → MCP` → add server using the **step 1 (run.py)** template above
+(adjust the path to your actual install).
+
+Because it runs **inside** AstrBot, `ASTRBOT_BASE_URL` points at the same
+instance (`127.0.0.1:6185`), so runtime tools talk to AstrBot's own OpenAPI —
+no LAN IP, no token over the network.
+
+### 3) Notes & safety
+
+- **`ASTRBOT_ALLOW_MUTATIONS`**: keep `false` unless you want the LLM chat to
+  install/change/remove plugins through MCP — enable only after deciding that is
+  acceptable (it is AstrBot controlling itself).
+- **`ASTRBOT_TOKEN`**: must be an API key with the scopes you want (read-only
+  tools need at least `plugin`; chat tools need `chat`). Create it in Dashboard
+  `设置 → API Key`; it stays in the AstrBot UI config, not in the skill repo.
+- **`ASTRBOT_CHAT_USERNAME`**: the WebChat user used by `chat_probe`/`smoke_suite`.
+- Docs tools (6) work even without any env — register the server and the agent
+  gets import/checklist/search help immediately.
+- Do **not** commit `ASTRBOT_TOKEN` into the skill repo; it lives only in the
+  AstrBot WebUI MCP config.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -420,5 +508,6 @@ Client URL: `http://localhost:3000/sse`.
 | `can't open file '.../server.py'` (under project root, not `mcp/`) | Relative script was resolved from workspace root; switch to absolute path to `mcp/server.py`. |
 | `Executable not found: python3` | Use full absolute path to `.venv/bin/python3`. |
 | `ModuleNotFoundError: mcp` | Use venv Python, not system Python; re-run step 1. |
+| `No such file or directory: '.../.venv/bin/python3'` | `.venv` is gitignored and absent from a GitHub zip. Use the `run.py` launcher (auto-creates it), or create it manually (§4b step 1b). |
 | Tools not appearing | Confirm `cwd` is the `mcp/` directory; restart client; confirm both paths exist. |
 | Extension red / CLI green | Align **extension** `mcp_settings.json` to the same absolute python + absolute `server.py` as `kilo.jsonc`. |
