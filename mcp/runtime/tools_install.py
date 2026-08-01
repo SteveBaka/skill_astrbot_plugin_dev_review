@@ -466,6 +466,7 @@ def astrbot_plugin_install_path(
     if in_failed:
         try:
             from .failure_analysis import analyze_failed_payload
+            from .error_fingerprint import record_diagnoses_if_enabled
 
             failed_payload = steps.get("failed_probe", {}).get("data")
             analysis = analyze_failed_payload(failed_payload)
@@ -476,6 +477,11 @@ def astrbot_plugin_install_path(
                 in (d.get("dir_name", ""), d.get("plugin_name", ""))
             ]
             out["failure_diagnosis"] = mine or analysis["diagnoses"]
+            recorded = record_diagnoses_if_enabled(
+                out["failure_diagnosis"], source=f"install:{str(plugin_id or guessed_id)}"
+            )
+            if recorded:
+                out["error_kb_recorded"] = recorded
         except Exception as exc:  # noqa: BLE001
             out["failure_diagnosis"] = {"ok": False, "error": repr(exc)}
 

@@ -15,6 +15,7 @@ This directory is a **complete skill system** for AstrBot plugin development wit
    - **Local install/update**: Scheme A — `astrbot_plugin_install_path` (…); stale same-version → bump version or `force_refresh` keep config/data. See `SKILL.md` + `mcp/SETUP.md`
    - **Dashboard before smoke**: after new plugin or new `_conf_schema` / profile `plugin_set` / tool toggles — **remind user to configure in AstrBot Dashboard**, then smoke only after they confirm (or explicitly override)
    - **WebChat test profile**: `plugin_dev_skill` … fixed session `mcp-smoke-<username>`; no auto-deletion / no system log tail
+   - **chat_probe message**: always use the **plugin's own command**; `/plugin_help` to discover when unsure; never hardcode `/ttsinfo` (mimo_tts only)
    - **WebChat session cleanup**: webchat-only + confirms; API key cannot delete user sessions
    - **Privacy**: do not auto-read plugin/AstrBot configs unless user names the keys; post-install = Dashboard hints only
    - After first code output: **Phase A** review (prefer `astrbot_review_path` + targeted FIX reads)
@@ -68,6 +69,8 @@ If MCP is configured:
 - **Runtime tools (22, `astrbot_*`)**: P0–P3 as before, plus P2+ **`scaffold_plugin`** (command|llm_tool|session|cron|hook|web|agent|adapter; contracts + review error=0) and **`review_path`** (profile=plugin|adapter)
 
 **Recommended loop**: `astrbot_scaffold_plugin` (or hand code after Step 0.5) → `astrbot_review_path` → `astrbot_plugin_install_path` → **user Dashboard** (enable / plugin_set / schema) → `astrbot_smoke_suite` (only after user confirms)
+
+**Error feedback (regression)**: set `ASTRBOT_ERROR_KB` to a gitignored store so install/smoke failures auto-record desensitized fingerprints; `mcp/scripts/error_kb.py report` reviews them, `propose` writes auto-fix-guide drafts **only after built-in validation** (dedupe + non-generic; rejected entries skipped). Details: `SKILL.md` Error feedback loop / `mcp/SETUP.md` §3.2.
 
 Setup + authoritative tool rules: `mcp/SETUP.md`
 

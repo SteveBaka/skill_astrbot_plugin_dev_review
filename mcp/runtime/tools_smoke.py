@@ -305,7 +305,7 @@ def judge_case(
         "verdict": verdict,
         "sse_errors": errors[:4],
         "markers_required": list(markers) if require_markers else [],
-        "markers_hit": marker_ok if require_markers else None,
+        "markers_hit": marker_ok if markers else None,
         "content": {
             "plain": [p[:120] for p in plains[:1]],
             "records": (summary.get("records") or [])[:1],
@@ -332,12 +332,17 @@ def astrbot_smoke_suite(
     """
     Full smoke pipeline: plugin status → failed diagnosis → derived cases → probes.
 
+    Cases come from the plugin's OWN components (info/help-like first) — the LLM
+    must not hardcode commands from other plugins (e.g. "/ttsinfo" is mimo_tts
+    only). If a plugin has no component metadata or you are unsure which command
+    it supports, probe "/plugin_help" first, then pass the plugin's real commands
+    via extra_messages.
+
     extra_messages: optional '||'-separated custom messages appended as cases.
     """
     pid = (plugin_id or "").strip()
     if not pid:
         return _dumps({"ok": False, "error_kind": "bad_request", "error": "plugin_id required"})
-
     if not confirm and not _env_bool("ASTRBOT_ALLOW_CHAT_PROBE"):
         return _dumps({
             "ok": False,
@@ -455,12 +460,20 @@ def astrbot_smoke_suite(
             markers=case.get("markers") or [],
             require_markers=bool(case.get("require_markers")),
         )
-        # soft multi-turn: content_mismatch → soft_pass (still report markers_hit)
-        if case.get("soft") and judged["verdict"] == "content_mismatch":
-            judged["verdict"] = "soft_pass"
-            judged["sse_errors"] = list(judged.get("sse_errors") or []) + [
-                "multi_turn_soft: waiter follow-up not confirmed under sequential probe"
-            ]
+        # soft multi-turn (e.g. session_waiter second hop): NOT a hard pass unless
+        # the curated markers hit. Emoji/short LLM reply → soft_pass (informational).
+        if case.get("soft"):
+            markers = case.get("markers") or []
+            mark_hit = judged.get("markers_hit")
+            not_confirmed = (
+                (markers and mark_hit is False)
+                or judged["verdict"] == "content_mismatch"
+            )
+            if not_confirmed and judged["verdict"] in ("pass", "content_mismatch"):
+                judged["verdict"] = "soft_pass"
+                judged["sse_errors"] = list(judged.get("sse_errors") or []) + [
+                    "multi_turn_soft: waiter follow-up not confirmed under sequential probe"
+                ]
         entry.update(judged)
         results.append(entry)
         if case.get("name") == "quiz_start":
@@ -478,6 +491,11 @@ def astrbot_smoke_suite(
         if mine:
             crashed = True
             out["pipeline"]["post_run_failed"] = mine
+            from .error_fingerprint import record_diagnoses_if_enabled
+
+            recorded = record_diagnoses_if_enabled(mine, source=f"smoke:{pid}")
+            if recorded:
+                out["pipeline"]["error_kb_recorded"] = recorded
 
     # ── verdict ────────────────────────────────────────────────
     good = ("pass", "soft_pass")

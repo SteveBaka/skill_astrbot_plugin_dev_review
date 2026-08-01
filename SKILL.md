@@ -383,6 +383,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   6d. `astrbot_review_path(path, profile=plugin|adapter)` — AST review (shared contracts); FIX-03 hooks on plugin profile; **FIX-06** on adapter (`id`/`enable` ban, **no `_conf_schema.json`**, no Platform attr shadow). Before install_path; fix all `error` first.
   6d-adapter: Follow official `astrbot/core/platform/register.py` + plugin-platform-adapter.md — custom fields only in tmpl (core injects type/enable/id); **never** Star `_conf_schema.json` for adapters.
   6e. `astrbot_smoke_suite(plugin_id, confirm=true, username=…)` — only **after** user configures Dashboard (enable, profile `plugin_set`, `_conf_schema`). Loop: scaffold → review_path → install_path → **user Dashboard** → smoke_suite.
+  6f. `astrbot_chat_probe(message=…)` — fill `message` with the **plugin's own command** (from components). Use `/plugin_help` as a minimal discovery probe when unsure; **never hardcode other plugins' commands** (e.g. `/ttsinfo` is mimo_tts-only).
   7. Do **not** auto-bind global config-routes unless user explicitly requests.
 - **Privacy — configs**:
   1. After install: only **Dashboard checklists** by plugin type (`astrbot_post_install_hints` / install response `dashboard_hints`) — **no** automatic `plugin_config_get` or full profile reads.
@@ -470,6 +471,22 @@ Goal: stronger Star understanding **and** low token/time cost via **strict on-de
 - `astrbot_review_path` — first pass static gate; then FIX-guided reads only  
 - `validate_import` — when a single symbol is doubtful  
 - Do **not** fetch OpenAPI or full logs for ordinary plugin codegen
+
+### Error feedback loop (regression → auto-fix-guide)
+
+When running regression on `plugin-types/type*` or an adapter and hitting
+install/smoke errors:
+
+1. `export ASTRBOT_ERROR_KB="$PWD/mcp/.error_kb.json"` (gitignored) so
+   `install_path` / `smoke_suite` failures auto-record **desensitized** fingerprints.
+2. `python3 mcp/scripts/error_kb.py --store <path> report` — review samples/counts.
+3. `python3 mcp/scripts/error_kb.py --store <path> propose --guide review/auto-fix-guide.md --min 2`
+   — writes drafts **only for validated entries** (no duplicates / not too generic);
+   rejected ones are listed as skipped and must not be appended as-is.
+4. Manually verify root cause, add the FIX section to `auto-fix-guide.md`, and fold
+   the fingerprint regex into `failure_analysis._SIGNATURES` so next runs auto-classify.
+
+Full flow: `mcp/SETUP.md` §3.2 Maintenance · `README.md` 维护章节.
 
 ---
 

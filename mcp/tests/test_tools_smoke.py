@@ -117,6 +117,16 @@ class TestJudgeCase:
         v = judge_case(self._probe(ok=True, plains=[plain]), "command")
         assert v["verdict"] == "platform_error"
 
+    def test_markers_hit_reported_when_markers_given(self):
+        # regression: markers_hit must be computed even without require_markers
+        v = judge_case(
+            self._probe(ok=True, plains=["⭐"]),
+            "example",
+            markers=("correct", "base class"),
+        )
+        assert v["markers_hit"] is False
+        # but without require_markers, judge alone does NOT fail it (suite soft-downgrades)
+
     def test_handler_exception_not_pass(self):
         plain = (
             "在调用插件 astrbot_plugin_daily_report 的处理函数 list_jobs 时出现异常："

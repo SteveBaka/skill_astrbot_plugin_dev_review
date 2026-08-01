@@ -8,42 +8,45 @@ Every AstrBot import path must be **exact**. LLMs frequently hallucinate plausib
 
 ### Correct Import Reference Table
 
+> **此表由 `mcp/runtime/contracts.py` 维护。** 新增或修改 import 映射时修改 `contracts.IMPORT_TABLE` 即可，勿单独改此表。
+
 | Symbol | Correct Import | Common WRONG Import |
 |--------|---------------|---------------------|
-| `logger` | `from astrbot.api import logger` | `from astrbot.api.logger import logger` |
-| `filter` | `from astrbot.api.event import filter` | `from astrbot.api import filter` |
-| `AstrMessageEvent` | `from astrbot.api.event import AstrMessageEvent` | `from astrbot.api import AstrMessageEvent` |
-| `Star` | `from astrbot.api.star import Star` | `from astrbot.api import Star` |
-| `Context` | `from astrbot.api.star import Context` | `from astrbot.api import Context` |
-| `StarTools` | `from astrbot.api.star import StarTools` | `from astrbot.api import StarTools` |
-| `register` | `from astrbot.api.star import register` | DEPRECATED — use `metadata.yaml` instead |
-| `ProviderRequest` | `from astrbot.api.provider import ProviderRequest` | `from astrbot.api import ProviderRequest` |
-| `LLMResponse` | `from astrbot.api.provider import LLMResponse` | `from astrbot.api import LLMResponse` |
-| `Comp` | `from astrbot.api.message_components import Comp` | `from astrbot.api import Comp` |
-| `MessageChain` | `from astrbot.api.event import MessageChain` | `from astrbot.api import MessageChain` |
-| `session_waiter` | `from astrbot.core.utils.session_waiter import session_waiter` | `from astrbot.api import session_waiter` |
-| `SessionController` | `from astrbot.core.utils.session_waiter import SessionController` | — |
-| `FunctionTool` | `from astrbot.core.agent.tool import FunctionTool` | `from astrbot.api import FunctionTool` |
-| `ToolExecResult` | `from astrbot.core.agent.tool import ToolExecResult` | **AVOID** — return `str` instead (Python 3.12 issue) |
-| `ToolSet` | `from astrbot.core.agent.tool import ToolSet` | — |
-| `AstrBotConfig` | `from astrbot.api import AstrBotConfig` | — |
-| `BaseAgentRunHooks` | `from astrbot.core.agent.hooks import BaseAgentRunHooks` | — |
-| `ContextWrapper` | `from astrbot.core.agent.run_context import ContextWrapper` | — |
 | `AstrAgentContext` | `from astrbot.core.astr_agent_context import AstrAgentContext` | — |
-| `Plain` | `from astrbot.api.message_components import Plain` | `from astrbot.api import Plain` |
-| `Image` | `from astrbot.api.message_components import Image` | `from astrbot.api import Image` |
-| `At` | `from astrbot.api.message_components import At` | — |
-| `Record` | `from astrbot.api.message_components import Record` | — |
-| `Video` | `from astrbot.api.message_components import Video` | — |
-| `Platform` | `from astrbot.api.platform import Platform` | `from astrbot.api import Platform` |
-| `PlatformMetadata` | `from astrbot.api.platform import PlatformMetadata` | — |
+| `AstrBotConfig` | `from astrbot.api import AstrBotConfig` | — |
 | `AstrBotMessage` | `from astrbot.api.platform import AstrBotMessage` | — |
+| `AstrMessageEvent` | `from astrbot.api.event import AstrMessageEvent` | `from astrbot.api import AstrMessageEvent` |
+| `At` | `from astrbot.api.message_components import At` | — |
+| `BaseAgentRunHooks` | `from astrbot.core.agent.hooks import BaseAgentRunHooks` | — |
+| `Comp` | `from astrbot.api.message_components import Comp` | `from astrbot.api import Comp` |
+| `Context` | `from astrbot.api.star import Context` | `from astrbot.api import Context` |
+| `ContextWrapper` | `from astrbot.core.agent.run_context import ContextWrapper` | — |
+| `filter` | `from astrbot.api.event import filter` | `from astrbot.api import filter` |
+| `FunctionTool` | `from astrbot.core.agent.tool import FunctionTool` | `from astrbot.api import FunctionTool` |
+| `html_renderer` | `from astrbot.api import html_renderer` | — |
+| `Image` | `from astrbot.api.message_components import Image` | `from astrbot.api import Image` |
+| `LLMResponse` | `from astrbot.api.provider import LLMResponse` | `from astrbot.api import LLMResponse` |
+| `logger` | `from astrbot.api import logger` | `from astrbot.api.logger import logger` |
+| `MessageChain` | `from astrbot.api.event import MessageChain` | `from astrbot.api import MessageChain` |
 | `MessageMember` | `from astrbot.api.platform import MessageMember` | — |
 | `MessageType` | `from astrbot.api.platform import MessageType` | — |
+| `Plain` | `from astrbot.api.message_components import Plain` | `from astrbot.api import Plain` |
+| `Platform` | `from astrbot.api.platform import Platform` | `from astrbot.api import Platform` |
+| `PlatformMetadata` | `from astrbot.api.platform import PlatformMetadata` | — |
+| `ProviderRequest` | `from astrbot.api.provider import ProviderRequest` | `from astrbot.api import ProviderRequest` |
+| `Record` | `from astrbot.api.message_components import Record` | — |
 | `register_platform_adapter` | `from astrbot.core.platform.register import register_platform_adapter` | — |
-| `MessageSession` | `from astrbot.core.platform.astr_message_event import MessageSesion` | — |
+| `SessionController` | `from astrbot.core.utils.session_waiter import SessionController` | — |
+| `session_waiter` | `from astrbot.core.utils.session_waiter import session_waiter` | `from astrbot.api import session_waiter` |
+| `Star` | `from astrbot.api.star import Star` | `from astrbot.api import Star` |
+| `StarTools` | `from astrbot.api.star import StarTools` | `from astrbot.api import StarTools` |
+| `ToolExecResult` | `from astrbot.core.agent.tool import ToolExecResult` | — |
+| `ToolSet` | `from astrbot.core.agent.tool import ToolSet` | — |
+| `Video` | `from astrbot.api.message_components import Video` | — |
 
-> **Note**: AstrBot uses the typo `MessageSesion` (one 's') in its actual codebase. Use exactly that spelling.
+> **Deprecated — still known**: `register` (`from astrbot.api.star import register`) — use `metadata.yaml` instead.
+>
+> **Note**: AstrBot uses the typo `MessageSesion` (one 's') in its actual codebase. Use exactly that spelling: `from astrbot.core.platform.astr_message_event import MessageSesion`.
 
 ### Alternative Import Style (Also Valid)
 

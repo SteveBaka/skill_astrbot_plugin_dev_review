@@ -157,7 +157,8 @@ class RuntimeConfig:
                 "config_name=plugin_dev_skill; confirm_probe=true after user allow; "
                 "fixed smoke session mcp-smoke-<username> (override via session_id / "
                 "ASTRBOT_CHAT_SMOKE_SESSION_ID); user manages it in Dashboard WebChat; "
-                "parse SSE not JSON-only."
+                "message = plugin's OWN command (use /plugin_help to discover when "
+                "unsure; never hardcode /ttsinfo etc.); parse SSE not JSON-only."
             ),
         }
 

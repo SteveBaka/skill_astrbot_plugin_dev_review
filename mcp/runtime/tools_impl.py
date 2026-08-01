@@ -75,7 +75,8 @@ def astrbot_runtime_info(probe: bool = True) -> str:
         "chat_probe": (
             "confirm_probe + username + config_name=plugin_dev_skill; "
             "SSE parse; fixed smoke session mcp-smoke-<username>; "
-            "chat-scoped API key"
+            "chat-scoped API key; message = plugin's own command "
+            "(/plugin_help to discover; no hardcoded /ttsinfo)"
         ),
         "uninstall_default": "keep_config=true, keep_data=true; ask user first",
     }

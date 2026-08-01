@@ -325,6 +325,12 @@ def register_runtime_tools(mcp: Any) -> None:
         ASTRBOT_CHAT_SMOKE_SESSION_ID) — a single stable Dashboard WebChat entry
         the user manages/deletes there (API keys cannot delete user sessions).
         Do not use for production chatter; prefer Dashboard WebChat for main testing.
+
+        MESSAGE GUIDANCE (LLM): fill `message` with the PLUGIN'S OWN command from
+        its component list (astrbot_plugin_get / smoke_suite derive them). When
+        unsure which command the plugin supports, use "/plugin_help" as a minimal
+        discovery probe FIRST, then probe the plugin's real commands. Never hardcode
+        mimo_tts-specific commands like "/ttsinfo" for other plugins.
         """
         return tools_chat.astrbot_chat_probe(
             message=message,

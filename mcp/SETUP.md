@@ -265,8 +265,11 @@ astrbot_ensure_plugin_dev_skill(plugin_id, provider_id, confirm_create=true, exi
 
 ```
 # After user explicitly allows MCP smoke:
+# message = plugin's OWN command. "/plugin_help" is a minimal discovery probe
+# when you don't know which commands the plugin supports; never hardcode
+# mimo_tts-only commands like "/ttsinfo" for other plugins.
 astrbot_chat_probe(
-  message="/ttsinfo",
+  message="/plugin_help",
   username="your_webchat_user",
   config_name="plugin_dev_skill",
   confirm_probe=true
@@ -279,6 +282,7 @@ astrbot_chat_probe(
 | API key | Must include **chat** scope (else 403) |
 | username | Required (`username` arg or `ASTRBOT_CHAT_USERNAME`) |
 | config | Default `config_name=plugin_dev_skill` (or `ASTRBOT_CHAT_CONFIG_NAME` / `config_id`) |
+| **message** | Fill the **plugin's actual command** (from `plugin_get` / `smoke_suite` components). Use `/plugin_help` to discover when unsure. Do **not** hardcode other plugins' commands (`/help` is Astrbot build-in command) |
 | session | **Fixed reusable smoke session** (default `mcp-smoke-<username>`; override via `session_id` arg or `ASTRBOT_CHAT_SMOKE_SESSION_ID`); server auto-creates it, all probes land in one stable Dashboard WebChat entry |
 | Response | SSE (`data: {...}`); tool returns truncated `plain_texts` / `records` |
 | Privacy | No transcript files; main test remains Dashboard WebChat |
@@ -371,6 +375,32 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
   (`plugin` scope, body `{"level": "DEBUG"|…|null}`) — **not yet listed** in
   public openapi.json; do not invent MCP tools against undocumented-only
   routes until the published spec includes them (or pin instance version).
+- **Error-fingerprint KB → auto-fix-guide** (`mcp/runtime/error_fingerprint.py` + `mcp/scripts/error_kb.py`):
+  captures **desensitized** error shapes (paths/UUID/token/plugin-id/line numbers
+  stripped) during regression/smoke; proposes new `auto-fix-guide.md` FIX entries
+  for recurring unclassified errors.
+  ```bash
+  # opt-in: record install/smoke diagnoses automatically
+  export ASTRBOT_ERROR_KB="$PWD/.error_kb.json"   # gitignored
+  # CLI (record one / report / propose new FIX entries)
+  python3 scripts/error_kb.py --store /tmp/kb.json record --error "No module named 'x'" --rule FIX-00 --source plugin
+  python3 scripts/error_kb.py --store /tmp/kb.json report
+  python3 scripts/error_kb.py --store /tmp/kb.json propose --guide ../review/auto-fix-guide.md --min 2
+  ```
+  Recorded samples never contain secrets/paths.
+
+  **Regression feedback loop (plugin-types + adapters):**
+  1. `export ASTRBOT_ERROR_KB="$PWD/.error_kb.json"`
+  2. Run `astrbot_smoke_suite` / `install_path` on `plugin-types/type*` and the
+     adapter under test; errors auto-record into the KB.
+  3. `report` → review desensitized samples + counts + source plugins.
+  4. `propose --min 2` → **only entries passing `validate_fix_entry` are printed
+     as writable drafts** (exit 0); rejected ones (placeholder-only / too-generic /
+     duplicate pattern/title / invalid regex) are listed as *skipped* and must
+     **not** be appended to `auto-fix-guide.md` as-is (exit 1 when none pass).
+  5. For accepted drafts: verify the root cause in a real traceback, add the FIX
+     section to `review/auto-fix-guide.md`, and (optionally) fold the fingerprint
+     regex into `failure_analysis._SIGNATURES` so it classifies automatically next run.
 
 ## 4. SSE Mode (optional)
 

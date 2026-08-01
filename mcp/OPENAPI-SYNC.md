@@ -4,7 +4,7 @@
 |-------|--------|
 | Live URL | https://docs.astrbot.app/openapi.json |
 | UI | https://docs.astrbot.app/scalar.html |
-| Last skill sync | 2026-07-30 (AstrBot **v4.26.8** release window) |
+| Last skill sync | 2026-08-01 (AstrBot **v4.26.8** release window; snapshot refreshed via `--update`) |
 | Paths in snapshot | **145** (no path/method drift vs prior for runtime-used routes) |
 | `info.version` | `0.1.0` (pinned by upstream — **not** a core version marker) |
 | Snapshot file | `AstrBot OpenAPI v1.json` (gitignored local asset) |

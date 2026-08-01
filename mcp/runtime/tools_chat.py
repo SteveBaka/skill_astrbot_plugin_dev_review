@@ -249,6 +249,10 @@ def astrbot_chat_probe(
     a single stable entry in Dashboard WebChat where the user can manage or
     delete it. API keys cannot delete user-owned sessions (creator check), so
     the MCP never attempts auto-deletion.
+
+    MESSAGE: pass the PLUGIN'S OWN command (from plugin_get / smoke_suite
+    components). Use "/plugin_help" as a minimal discovery probe when unsure;
+    never hardcode other plugins' commands like "/ttsinfo".
     """
     if not _chat_allowed(confirm_probe):
         return _dumps(
