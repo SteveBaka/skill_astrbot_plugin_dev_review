@@ -12,6 +12,7 @@ Does not call AstrBot OpenAPI. Smoke only after user Dashboard config.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List
@@ -31,6 +32,26 @@ from .review_static import review_adapter_directory, review_plugin_directory
 
 def _dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2, default=str)
+
+
+def default_workspace_dir() -> str:
+    """Staging dir for scaffolds. Env ASTRBOT_DEV_WORKSPACE overrides; otherwise ~/.astrbot_skill_workspace.
+
+    NEVER default to cwd: when the MCP runs inside AstrBot the cwd may be
+    /AstrBot (container root), which produced confusing staging paths like
+    /AstrBot/<plugin_name>/. The staging dir is irrelevant to where the plugin
+    actually installs — install_path uploads it into <data>/plugins/<name>/.
+    """
+    env = (os.environ.get("ASTRBOT_DEV_WORKSPACE") or "").strip()
+    if env:
+        return env
+    return str(Path.home() / ".astrbot_skill_workspace")
+
+
+# Files agents may deliver directly via extra_files_json (whitelist, no traversal)
+_EXTRA_FILE_ALLOW = frozenset(
+    {"main.py", "metadata.yaml", "requirements.txt", "_conf_schema.json", "README.md"}
+)
 
 
 def _safe_cmd_token(command: str, plugin_name: str) -> str:
@@ -583,9 +604,16 @@ def scaffold_plugin(
     display_name: str = "",
     desc: str = "",
     overwrite: bool = False,
+    extra_files_json: str = "",
 ) -> Dict[str, Any]:
     """
     Create plugin or adapter-frame directory; run matching reviewer (error=0).
+
+    extra_files_json: optional JSON object {relpath: content} to write on top of
+    the generated skeleton (allowlist: main.py / metadata.yaml / requirements.txt
+    / _conf_schema.json / README.md). This lets an agent deliver the COMPLETE
+    plugin in one call (e.g. full main.py + _conf_schema.json) without needing a
+    file-system tool, then upload via install_path.
     """
     ptype = (plugin_type or "command").strip().lower()
     if ptype not in SCAFFOLD_TYPES:
@@ -602,6 +630,36 @@ def scaffold_plugin(
             "error_kind": "bad_author",
             "error": "author is required (metadata.yaml author)",
         }
+
+    # parse extra files (validate before writing anything)
+    extra_files: Dict[str, str] = {}
+    if (extra_files_json or "").strip():
+        try:
+            parsed = json.loads(extra_files_json)
+            if not isinstance(parsed, dict):
+                return {
+                    "ok": False,
+                    "error_kind": "bad_extra_files",
+                    "error": "extra_files_json must be a JSON object {relpath: content}",
+                }
+            for rel, content in parsed.items():
+                rel = str(rel).strip()
+                if rel not in _EXTRA_FILE_ALLOW:
+                    return {
+                        "ok": False,
+                        "error_kind": "bad_extra_files",
+                        "error": (
+                            f"disallowed file {rel!r}; allowed: "
+                            f"{sorted(_EXTRA_FILE_ALLOW)}"
+                        ),
+                    }
+                extra_files[rel] = str(content)
+        except json.JSONDecodeError as exc:
+            return {
+                "ok": False,
+                "error_kind": "bad_extra_files",
+                "error": f"extra_files_json is not valid JSON: {exc}",
+            }
 
     # ── adapter frame (separate identity rules) ────────────────
     if ptype == "adapter":
@@ -627,7 +685,9 @@ def scaffold_plugin(
     description = (desc or "").strip() or f"Scaffolded {ptype} plugin ({name})"
 
     out_parent = (
-        Path(output_dir).expanduser().resolve() if output_dir.strip() else Path.cwd()
+        Path(output_dir).expanduser().resolve()
+        if output_dir.strip()
+        else Path(default_workspace_dir())
     )
     target = out_parent / name
     if target.exists() and any(target.iterdir()) and not overwrite:
@@ -664,6 +724,8 @@ def scaffold_plugin(
         "main.py": main_py,
         "requirements.txt": _render_requirements(ptype),
     }
+    files.update(extra_files)  # agent-provided files win over skeleton
+
     written: List[str] = []
     for rel, content in files.items():
         (target / rel).write_text(content, encoding="utf-8")
@@ -819,6 +881,7 @@ def astrbot_scaffold_plugin(
     display_name: str = "",
     desc: str = "",
     overwrite: bool = False,
+    extra_files_json: str = "",
 ) -> str:
     """MCP entry: JSON string."""
     return _dumps(
@@ -831,5 +894,6 @@ def astrbot_scaffold_plugin(
             display_name=display_name,
             desc=desc,
             overwrite=overwrite,
+            extra_files_json=extra_files_json,
         )
     )

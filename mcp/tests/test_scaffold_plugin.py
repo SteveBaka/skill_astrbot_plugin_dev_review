@@ -7,7 +7,7 @@ import pytest
 
 from runtime.contracts import SCAFFOLD_TYPES, validate_plugin_name, slug_to_class_name
 from runtime.review_static import review_adapter_directory, review_plugin_directory
-from runtime.scaffold_plugin import scaffold_plugin
+from runtime.scaffold_plugin import default_workspace_dir, scaffold_plugin
 
 
 class TestContracts:
@@ -181,3 +181,53 @@ class BadSchema(Platform):
         r = scaffold_plugin("BadName", "A", output_dir=str(tmp_path))
         assert r["ok"] is False
         assert r["error_kind"] == "bad_name"
+
+
+class TestWorkspaceDefault:
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("ASTRBOT_DEV_WORKSPACE", "/tmp/ws")
+        assert default_workspace_dir() == "/tmp/ws"
+
+    def test_default_home(self, monkeypatch):
+        monkeypatch.delenv("ASTRBOT_DEV_WORKSPACE", raising=False)
+        assert default_workspace_dir().endswith(".astrbot_skill_workspace")
+
+
+class TestExtraFiles:
+    def test_extra_files_written(self, tmp_path):
+        r = scaffold_plugin(
+            "astrbot_plugin_extra",
+            "A",
+            plugin_type="command",
+            output_dir=str(tmp_path),
+            extra_files_json=json.dumps(
+                {
+                    "_conf_schema.json": '{"token": {"type": "string"}}',
+                    "main.py": "x = 1\n",
+                }
+            ),
+        )
+        assert r["ok"] is True
+        d = tmp_path / "astrbot_plugin_extra"
+        assert (d / "_conf_schema.json").read_text() == '{"token": {"type": "string"}}'
+        assert (d / "main.py").read_text() == "x = 1\n"
+
+    def test_disallowed_file_rejected(self, tmp_path):
+        r = scaffold_plugin(
+            "astrbot_plugin_extra2",
+            "A",
+            output_dir=str(tmp_path),
+            extra_files_json=json.dumps({"../../evil.py": "x"}),
+        )
+        assert r["ok"] is False
+        assert r["error_kind"] == "bad_extra_files"
+
+    def test_bad_json_rejected(self, tmp_path):
+        r = scaffold_plugin(
+            "astrbot_plugin_extra3",
+            "A",
+            output_dir=str(tmp_path),
+            extra_files_json="{not json",
+        )
+        assert r["ok"] is False
+        assert r["error_kind"] == "bad_extra_files"

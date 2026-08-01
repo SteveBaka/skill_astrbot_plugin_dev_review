@@ -389,6 +389,7 @@ def register_runtime_tools(mcp: Any) -> None:
         display_name: str = "",
         desc: str = "",
         overwrite: bool = False,
+        extra_files_json: str = "",
     ) -> str:
         """
         [RUNTIME P2+] Scaffold from shared contracts (multi-type + adapter frame).
@@ -400,6 +401,19 @@ def register_runtime_tools(mcp: Any) -> None:
         **Invariant:** fresh scaffold review error count must be 0.
         Confirm name/author (or adapter id) with the user first. Dashboard
         config before any smoke for Star plugins.
+
+        WORKFLOW (staging → install): output_dir is only a STAGING area (default
+        ASTRBOT_DEV_WORKSPACE or ~/.astrbot_skill_workspace; never cwd). After
+        scaffolding — with or without extra_files_json — upload the plugin with
+        astrbot_plugin_install_path(path). The INSTALLED location is always
+        <data>/plugins/<root_dir_name>/, regardless of staging path; never ask
+        the user to copy files into /AstrBot/<name>/.
+        extra_files_json: optional JSON {relpath: content} to deliver the FULL
+        plugin in one call (allowlist: main.py/metadata.yaml/requirements.txt/
+        _conf_schema.json/README.md) — avoids needing a file-system tool when the
+        MCP runs inside AstrBot. If the plugin reads `config`, ship
+        `_conf_schema.json` here or astrbot_plugin_config_set will 400
+        "没有注册配置".
         """
         return scaffold_plugin.astrbot_scaffold_plugin(
             name=name,
@@ -410,6 +424,7 @@ def register_runtime_tools(mcp: Any) -> None:
             display_name=display_name,
             desc=desc,
             overwrite=overwrite,
+            extra_files_json=extra_files_json,
         )
 
     # ── P2+ static reviewer (no AstrBot needed) ────────────────

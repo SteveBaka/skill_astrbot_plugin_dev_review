@@ -16,6 +16,7 @@ This directory is a **complete skill system** for AstrBot plugin development wit
    - **Dashboard before smoke**: after new plugin or new `_conf_schema` / profile `plugin_set` / tool toggles — **remind user to configure in AstrBot Dashboard**, then smoke only after they confirm (or explicitly override)
    - **WebChat test profile**: `plugin_dev_skill` … fixed session `mcp-smoke-<username>`; no auto-deletion / no system log tail
    - **chat_probe message**: always use the **plugin's own command**; `/plugin_help` to discover when unsure; never hardcode `/ttsinfo` (mimo_tts only)
+   - **Staging → install (no hand-copy)**: `scaffold_plugin` output_dir is staging only (default `ASTRBOT_DEV_WORKSPACE` / `~/.astrbot_skill_workspace`, never cwd). Upload via `install_path`; installed path is always `<data>/plugins/<root_dir_name>/`. Never tell the user to copy files into `/AstrBot/<name>/`. Deliver full files (incl. `_conf_schema.json` when the plugin uses `config`) via `extra_files_json`, else `config_set` 400s "没有注册配置"
    - **WebChat session cleanup**: webchat-only + confirms; API key cannot delete user sessions
    - **Privacy**: do not auto-read plugin/AstrBot configs unless user names the keys; post-install = Dashboard hints only
    - After first code output: **Phase A** review (prefer `astrbot_review_path` + targeted FIX reads)

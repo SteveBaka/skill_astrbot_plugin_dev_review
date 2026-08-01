@@ -500,6 +500,34 @@ no LAN IP, no token over the network.
 - Do **not** commit `ASTRBOT_TOKEN` into the skill repo; it lives only in the
   AstrBot WebUI MCP config.
 
+### Install-path rule (do not fabricate absolute paths)
+
+- AstrBot installs **plugins** to `<data_dir>/plugins/<root_dir_name>/`
+  (Docker: `/AstrBot/data/plugins/<root_dir_name>/`).
+- AstrBot installs **skills** to `<data_dir>/skills/<name>/`
+  (Docker: `/AstrBot/data/skills/<name>/`).
+- The OpenAPI plugin list/get **only exposes `root_dir_name` (bare name), never
+  absolute filesystem paths.** Agents must **not** claim a plugin lives at
+  `/AstrBot/<name>/` or any other invented absolute path — the API cannot know
+  it. If a real path is needed, ask the user to check the Dashboard or run
+  `docker exec astrbot ls /AstrBot/data/plugins`.
+- Wrong-looking answers (e.g. `/AstrBot/astrbot_plugin_x/`) are a
+  **hallucination**, not data from the API.
+
+### Scaffold → install loop (AstrBot-internal agent)
+
+1. `astrbot_scaffold_plugin` writes to a **staging** dir — default `ASTRBOT_DEV_WORKSPACE`
+   or `~/.astrbot_skill_workspace`, **never cwd** (cwd inside AstrBot may be
+   `/AstrBot`, which produced confusing paths like `/AstrBot/<name>/`).
+2. Deliver the complete plugin in one call via `extra_files_json`
+   (allowlist: `main.py` / `metadata.yaml` / `requirements.txt` /
+   `_conf_schema.json` / `README.md`). If the plugin uses `config`, **include
+   `_conf_schema.json`** or `astrbot_plugin_config_set` returns
+   `400 插件 … 没有注册配置`.
+3. Upload: `astrbot_plugin_install_path(path=<staging>/<name>)`. The installed
+   location is always `<data>/plugins/<root_dir_name>/`; the staging path is
+   irrelevant. Never ask the user to copy files into `/AstrBot/<name>/`.
+
 ## Troubleshooting
 
 | Symptom | Fix |
