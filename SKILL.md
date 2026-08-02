@@ -385,6 +385,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   6d-adapter: Follow official `astrbot/core/platform/register.py` + plugin-platform-adapter.md — custom fields only in tmpl (core injects type/enable/id); **never** Star `_conf_schema.json` for adapters.
   6e. `astrbot_smoke_suite(plugin_id, confirm=true, username=…)` — only **after** user configures Dashboard (enable, profile `plugin_set`, `_conf_schema`). Loop: scaffold → review_path → install_path → **user Dashboard** → smoke_suite.
   6f. `astrbot_chat_probe(message=…)` — fill `message` with the **plugin's own command** (from components). Use `/plugin_help` as a minimal discovery probe when unsure; **never hardcode other plugins' commands** (e.g. `/ttsinfo` is mimo_tts-only).
+  6g. `astrbot_plugin_log_level_get/set` — per-plugin log level (v4.27.0). `set` needs mutations; DEBUG raises verbosity and may capture user message content — reset to follow-global (empty level) after debugging.
   7. Do **not** auto-bind global config-routes unless user explicitly requests.
 - **Privacy — configs**:
   1. After install: only **Dashboard checklists** by plugin type (`astrbot_post_install_hints` / install response `dashboard_hints`) — **no** automatic `plugin_config_get` or full profile reads.

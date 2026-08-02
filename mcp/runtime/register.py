@@ -145,6 +145,34 @@ def register_runtime_tools(mcp: Any) -> None:
         """
         return tools_manage.astrbot_plugin_reload(plugin_id=plugin_id, failed=failed)
 
+    # ── P1 per-plugin log level (v4.27.0 public API) ───────────
+
+    @mcp.tool()
+    def astrbot_plugin_log_level_get(plugin_id: str) -> str:
+        """
+        [RUNTIME P1] Get per-plugin log level (read-only, v4.27.0).
+
+        Returns only {plugin_id, log_level}; log_level null = follow global.
+        Does NOT dump the full config (may contain secrets). Needs `plugin` scope.
+        """
+        return tools_manage.astrbot_plugin_log_level_get(plugin_id=plugin_id)
+
+    @mcp.tool()
+    def astrbot_plugin_log_level_set(
+        plugin_id: str, level: str, confirm: bool = False
+    ) -> str:
+        """
+        [RUNTIME P1] Set per-plugin log level via PUT .../log-level (v4.27.0).
+
+        level: DEBUG | INFO | WARNING | ERROR | CRITICAL, or "" / "none" / "global"
+        / "null" to follow the global level. Needs ASTRBOT_ALLOW_MUTATIONS=true.
+        Privacy: DEBUG raises verbosity and may record user message content —
+        reset to follow-global (empty level) after debugging.
+        """
+        return tools_manage.astrbot_plugin_log_level_set(
+            plugin_id=plugin_id, level=level, confirm=confirm
+        )
+
     # ── P2 lifecycle (uninstall safety) ────────────────────────
 
     @mcp.tool()

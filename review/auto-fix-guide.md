@@ -269,6 +269,11 @@ async def terminate(self):
 
 ### FIX-13: Deprecated register_llm_tool()
 
+> **v4.27.0 (#9468)**: the deprecation is now **formalized** — `Context.register_llm_tool`
+> (and `unregister_llm_tool` / `register_commands` / `register_task`) carry an official
+> `@deprecated` decorator and emit `DeprecationWarning` at call sites. Use
+> `add_llm_tools()` (docs `guides/ai.md`, ≥ v4.5.1). <!-- Source: PR #9468 + guides/ai.md -->
+
 ```python
 # ❌ WRONG
 self.context.register_llm_tool(my_tool)

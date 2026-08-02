@@ -59,7 +59,7 @@ from astrbot.api import logger
 内置 MCP 服务器把 Skill 从「文档 + 规则」升级为**可运行的开发助手**：
 
 - **文档 / 审核工具（6）**：`get_skill_info` / `list_docs` / `get_doc` / `search_docs` / `validate_import` / `get_review_checklist` —— 无需 AstrBot，始终可用
-- **AstrBot Runtime 工具（22）**：P0 读取 → P1 管理 → P2 安装/卸载 → P2+ 脚手架与静态审查 → P2.5 开发档案 → P3 WebChat smoke → P3+ smoke 复合套件
+- **AstrBot Runtime 工具（24）**：P0 读取 → P1 管理（含 per-plugin log-level）→ P2 安装/卸载 → P2+ 脚手架与静态审查 → P2.5 开发档案 → P3 WebChat smoke → P3+ smoke 复合套件
 
 **推荐开发闭环**：
 
@@ -95,7 +95,10 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
         // 局域网 AstrBot 根地址（跨设备请写主机 IP:端口，不要写对方机器的 localhost）
         "ASTRBOT_BASE_URL": "http://192.168.x.x:6185",
 
-        // Dashboard API Key（默认请求头 X-API-Key；勿提交仓库；chat 探测需含 chat 权限）
+        // Dashboard API Key（默认请求头 X-API-Key；勿提交仓库）
+        // 推荐权限（≥4.27.0）：plugin + config + provider + chat
+        // 说明：config 不再默认勾选；插件 config 端点属于 plugin scope（非 config）；
+        // 仅 admin 操作需 config:edit_admin / chat:admin 子权限（本 MCP 默认不需要）
         "ASTRBOT_TOKEN": "your-api-key",
 
         // 鉴权方式：api_key（默认）| bearer | auto
@@ -172,9 +175,18 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 - `args` 指向 **`mcp/run.py`**（不是 server.py）：首次被拉起时自动建 `.venv` + 装依赖，之后直跑 `server.py`；若容器系统 Python 已自带 `mcp` 依赖，则**连 venv 都省了**。
 - `ASTRBOT_BASE_URL` 填 `127.0.0.1:6185`（同实例自调，不走网络）。
 
+**API Key 权限（≥4.27.0，Dashboard → 设置 → API Key → scopes）**
+- **推荐勾选：`plugin` + `config` + `provider` + `chat`**
+- `plugin`：插件管理 + 插件 config 读写（`/plugins/{id}/config*` 属 plugin scope，不是 `config`）
+- `config`：配置档案（`config_profiles_brief` / `ensure_plugin_dev_skill`）
+- `provider`：Provider 列表
+- `chat`：WebChat 会话/探测/smoke
+- 不需要：`bot`/`im`/`data`/`file`/`mcp`/`persona`/`skill`
+- 注意：**`config` 不再默认勾选**；仅改 admin 配置需 `config:edit_admin`、仅以管理员身份跑 admin 指令需 `chat:admin`（本 MCP 默认不需要）
+
 **3) 测试连接**
 - 首次「测试连接」约 30–60s（建 venv / 装依赖），之后秒过。
-- 连接成功后，AstrBot 的 LLM 可直接调用本 Skill 的 **6 个文档工具 + 22 个 runtime 工具**。
+- 连接成功后，AstrBot 的 LLM 可直接调用本 Skill 的 **6 个文档工具 + 24 个 runtime 工具**。
 
 **4) 失败排查（快速）**
 | 现象 | 处理 |
@@ -203,6 +215,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `ASTRBOT_CHAT_CONFIG_NAME` | `plugin_dev_skill` | chat_probe 默认配置档案名 |
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | `mcp-smoke-<username>` | smoke 固定会话 id（所有 probe 复用同一条，Dashboard 可管理） |
 | `ASTRBOT_ERROR_KB` | 空 | 错误指纹库路径（gitignored）；install/smoke 失败自动记录脱敏指纹，反哺 auto-fix-guide |
+| `ASTRBOT_DEV_WORKSPACE` | `~/.astrbot_skill_workspace` | scaffold 暂存目录（绝不用 cwd，避免容器内落到 /AstrBot/<name>/） |
 
 ### 功能一览（工具）
 
@@ -211,6 +224,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | Docs | 文档检索、import 校验、审核清单 | `get_doc` / `validate_import` / … | 无需 AstrBot |
 | P0 | 连通探测、插件列表/失败/详情 | `astrbot_runtime_info` / `list` / `failed` / `get` | BASE_URL + Token |
 | P1 | 读改配置、启停、重载 | `config_get/set` / `set_enabled` / `reload` | + MUTATIONS（写） |
+| P1+ | 按插件日志级别（v4.27.0） | `log_level_get`（只读）/ `log_level_set`（mutations） | plugin scope；`config` 不涉 |
 | P2 | 本地 ZIP 安装、安全卸载 | `install_path` / `pack_preview` / `uninstall` | + MUTATIONS；卸载默认保留配置/数据 |
 | P2+ | **契约脚手架**：8 类型 + adapter 框架，error=0 不变量 | `scaffold_plugin` | 纯本地，无需 AstrBot |
 | P2+ | **AST 静态审查器**：FIX 规则代码化，发现项直链 auto-fix-guide | `review_path`（profile=plugin\|adapter） | 纯本地，无需 AstrBot |
@@ -498,7 +512,7 @@ skill_astrbot_plugin_dev_review/
     │   ├── config.py                     # env 配置解析（安全门禁地基，密钥不回显）
     │   ├── contracts.py                  # 共享契约（import 表 / FIX 映射 / 类型 / requirements）【单源】
     │   ├── client.py                     # OpenAPI HTTP 客户端（鉴权/错误分类/SSE）
-    │   ├── register.py                   # 22 个 Runtime 工具注册（FastMCP）
+    │   ├── register.py                   # 24 个 Runtime 工具注册（FastMCP）
     │   ├── tools_impl.py                 # P0 读：runtime_info / 插件列表 / failed / 详情
     │   ├── tools_manage.py               # P1 管：配置读写 / 启停 / 重载
     │   ├── tools_lifecycle.py            # P2 卸载（默认保留配置/数据 + 双重确认）

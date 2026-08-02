@@ -66,6 +66,8 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             "astrbot_review_path",
             "astrbot_scaffold_plugin",
             "astrbot_smoke_suite",
+            "astrbot_plugin_log_level_get",
+            "astrbot_plugin_log_level_set",
         ],
         "install_scheme_a": "pack(.gitignore) → install/upload → enable → reload → failed",
         "plugin_dev_skill": (

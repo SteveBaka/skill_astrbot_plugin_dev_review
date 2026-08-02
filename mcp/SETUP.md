@@ -112,6 +112,8 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_plugin_config_set` | **[P1]** PUT plugin config (**mutations**) |
 | `astrbot_plugin_set_enabled` | **[P1]** PATCH enable/disable (**mutations**) |
 | `astrbot_plugin_reload` | **[P1]** POST reload (+ failed endpoint) (**mutations**) |
+| `astrbot_plugin_log_level_get` | **[P1]** Read per-plugin log level (**read-only**, v4.27.0; returns only `log_level`, no config dump) |
+| `astrbot_plugin_log_level_set` | **[P1]** Set per-plugin log level (**mutations**, v4.27.0; DEBUG/INFO/WARNING/ERROR/CRITICAL or follow-global) |
 | `astrbot_plugin_uninstall` | **[P2]** DELETE uninstall (**mutations** + confirm; **default keep config/data**) |
 | `astrbot_plugin_pack_preview` | **[P2]** Dry-run local ZIP pack (gitignore; **no upload**) |
 | `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → upload → enable → reload → failed (**mutations**; optional `force_refresh`) |
@@ -143,7 +145,7 @@ Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / 
 | Env | Required | Meaning |
 |-----|----------|---------|
 | `ASTRBOT_BASE_URL` | for runtime | e.g. `http://192.168.1.50:6185` (AstrBot on **another LAN device** — do not use that device's `localhost` from Kilo's machine) |
-| `ASTRBOT_TOKEN` | if instance requires auth | Dashboard API key / token (sent as `X-API-Key` by default; **chat** scope needed for chat_probe) |
+| `ASTRBOT_TOKEN` | if instance requires auth | Dashboard API key / token (sent as `X-API-Key` by default; scope set per table below) |
 | `ASTRBOT_AUTH_MODE` | no | `api_key` (default) \| `bearer` \| `auto` |
 | `ASTRBOT_HTTP_TIMEOUT` | no | seconds, default `15` (raise on slow NAS/VPN; upload/chat may need more) |
 | `ASTRBOT_ALLOW_MUTATIONS` | no | default off; `true` enables reload / set_enabled / config_set / install / uninstall / ensure_plugin_dev_skill |
@@ -151,6 +153,34 @@ Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / 
 | `ASTRBOT_CHAT_USERNAME` | for chat_probe | default WebChat username |
 | `ASTRBOT_CHAT_CONFIG_NAME` | no | default `plugin_dev_skill` |
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | no | fixed smoke session id (default `mcp-smoke-<username>`) |
+| `ASTRBOT_ERROR_KB` | no | error-fingerprint store path (gitignored); install/smoke failures auto-record desensitized fingerprints |
+| `ASTRBOT_DEV_WORKSPACE` | no | scaffold staging dir (default `~/.astrbot_skill_workspace`; never cwd) |
+
+### API Key scopes (AstrBot ≥4.27.0, #9503)
+
+AstrBot API keys use **scope** permissions (`Dashboard → 设置 → API Key → scopes`).
+The OpenAPI `x-astrbot-scope` values (4.27.0) are:
+`bot` · `chat` · `config` · `data` · `file` · `im` · `mcp` · `persona` · `plugin` · `provider` · `skill`.
+
+**Recommended set for this MCP: `plugin` + `config` + `provider` + `chat`.**
+
+| Scope | Covers in this skill | Tools |
+|-------|----------------------|-------|
+| **`plugin`** | plugin list/get/failed, enable/reload/uninstall, install/upload, **plugin config get/set/schema** (`/plugins/{id}/config*` is `plugin` scope, not `config`), log-level | `plugin_list/get/failed`, `set_enabled`, `reload`, `uninstall`, `install_path`, `pack_preview`, `config_get/set/schema`, `smoke_suite`(部分) |
+| **`config`** | config **profiles** (global AstrBot config) | `config_profiles_brief`, `ensure_plugin_dev_skill` |
+| **`provider`** | provider list (for `plugin_dev_skill` default_provider_id) | `providers_brief` |
+| **`chat`** | WebChat sessions + probe | `chat_sessions_brief`, `chat_probe`, `chat_sessions_cleanup`, `smoke_suite` |
+
+**Not needed**: `bot`, `im`, `data`, `file`, `mcp`, `persona`, `skill` (no endpoints we call use them).
+
+**v4.27.0 changes to be aware of (#9503):**
+- **`config` is no longer pre-selected** when creating an API key — tick it explicitly if you use profile/config tools.
+- New **sensitive sub-scopes** (shown only where relevant in the UI):
+  - `config:edit_admin` — needed **only** to change admin config (e.g. `admins_id`). This skill does not, so **not required**.
+  - `chat:admin` — needed **only** if a chat-scoped key must act as a **configured administrator** identity in chat (e.g. smoke-testing admin-only commands). Optional.
+- Hardened boundaries: chat keys cannot read arbitrary server files or select dashboard-only custom workspaces; smoke on normal users is unaffected.
+
+> Auth is additive across tools: P0 reads need `plugin`; P1 config needs `plugin`(+`config` for profiles); P2 install/uninstall need `plugin`; P3 chat needs `chat`. `ASTRBOT_ALLOW_MUTATIONS` gates *writes* on top of these scopes.
 
 ### Example `kilo.jsonc` fragment (paths absolute; env for LAN)
 

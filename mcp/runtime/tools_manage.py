@@ -243,3 +243,90 @@ def astrbot_plugin_reload(plugin_id: str, failed: bool = False) -> str:
             "Optional: astrbot_plugin_get to confirm activated=true."
         )
     return _dumps(payload)
+
+
+# ── per-plugin log level (v4.27.0 public API) ────────────────
+
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+# empty/aliases → None (follow global)
+_NULL_ALIASES = {"", "none", "null", "global", "default"}
+
+
+def _normalize_log_level(level: str) -> tuple[str | None, str | None]:
+    """Return (api_level, error). None api_level means 'follow global'."""
+    raw = (level or "").strip()
+    if raw.lower() in _NULL_ALIASES:
+        return None, None
+    up = raw.upper()
+    if up in _LOG_LEVELS:
+        return up, None
+    return None, (
+        f"invalid level {raw!r}; use one of {list(_LOG_LEVELS)} "
+        "or none/global/null to follow the global level"
+    )
+
+
+def astrbot_plugin_log_level_get(plugin_id: str) -> str:
+    """
+    GET current per-plugin log level — read-only.
+
+    Returns ONLY {plugin_id, log_level} from the plugin config endpoint
+    (log_level: null means "follow global"). Does NOT dump the full config,
+    which may contain secrets.
+    """
+    pid = _require_plugin_id(plugin_id)
+    if not pid:
+        return _dumps({"ok": False, "error": "plugin_id is required", "error_kind": "bad_request"})
+    client = AstrBotClient()
+    result = client.get(f"/api/v1/plugins/{encode_plugin_id(pid)}/config")
+    payload: Dict[str, Any] = {"ok": result.ok, "plugin_id": pid, "error": result.error}
+    if result.ok and isinstance(result.data, dict):
+        d = result.data.get("data") or result.data
+        if isinstance(d, dict):
+            payload["log_level"] = d.get("log_level")
+            if payload["log_level"] is None:
+                payload["note"] = "null → follows the global log level"
+    else:
+        payload["error_kind"] = result.error_kind or "http_status"
+    return _dumps(payload)
+
+
+def astrbot_plugin_log_level_set(
+    plugin_id: str, level: str, *, confirm: bool = False
+) -> str:
+    """
+    PUT /api/v1/plugins/{plugin_id}/log-level — set per-plugin log level.
+
+    level: DEBUG | INFO | WARNING | ERROR | CRITICAL, or "" / "none" / "global"
+    / "null" to follow the global level.
+
+    Safety:
+      - Requires ASTRBOT_ALLOW_MUTATIONS=true.
+      - DEBUG raises log verbosity and may record user message content — reset to
+        follow-global (empty level) after debugging.
+    """
+    denied = _mutation_or_none("plugin_log_level_set")
+    if denied:
+        return denied
+    pid = _require_plugin_id(plugin_id)
+    if not pid:
+        return _dumps({"ok": False, "error": "plugin_id is required", "error_kind": "bad_request"})
+    api_level, err = _normalize_log_level(level)
+    if err:
+        return _dumps({"ok": False, "error": err, "error_kind": "bad_request"})
+
+    client = AstrBotClient()
+    result = client.put(
+        f"/api/v1/plugins/{encode_plugin_id(pid)}/log-level",
+        json_body={"level": api_level},
+    )
+    payload = result.to_dict()
+    payload["plugin_id"] = pid
+    payload["mutation"] = "log_level_set"
+    payload["level_applied"] = api_level  # null = follow global
+    if result.ok:
+        payload["next_step"] = (
+            "Log level applied. DEBUG may capture user message content; "
+            "call log_level_set with empty level to follow global again."
+        )
+    return _dumps(payload)

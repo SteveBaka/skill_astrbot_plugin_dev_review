@@ -67,7 +67,7 @@ Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official d
 If MCP is configured:
 
 - **Docs tools (6)**: `get_skill_info`, `validate_import`, `get_review_checklist`, `search_docs`, `list_docs`, `get_doc`
-- **Runtime tools (22, `astrbot_*`)**: P0–P3 as before, plus P2+ **`scaffold_plugin`** (command|llm_tool|session|cron|hook|web|agent|adapter; contracts + review error=0) and **`review_path`** (profile=plugin|adapter)
+- **Runtime tools (24, `astrbot_*`)**: P0–P3 as before, plus P2+ **`scaffold_plugin`** (command|llm_tool|session|cron|hook|web|agent|adapter; contracts + review error=0) and **`review_path`** (profile=plugin|adapter), and P1 **`log_level_get/set`** (v4.27.0)
 
 **Recommended loop**: `astrbot_scaffold_plugin` (or hand code after Step 0.5) → `astrbot_review_path` → `astrbot_plugin_install_path` → **user Dashboard** (enable / plugin_set / schema) → `astrbot_smoke_suite` (only after user confirms)
 
