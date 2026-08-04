@@ -120,6 +120,7 @@ class RuntimeConfig:
                 "smoke_suite": self.enabled,  # + confirm / ALLOW_CHAT_PROBE at call time
                 "log_level_get": self.enabled,  # read-only (v4.27.0)
                 "log_level_set": self.enabled and self.allow_mutations,  # v4.27.0
+                "failed_remove": self.enabled and self.allow_mutations,  # v4.27.0 failed cleanup
             },
             "privacy": {
                 "no_auto_read_plugin_config": True,

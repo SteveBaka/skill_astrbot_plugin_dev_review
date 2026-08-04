@@ -56,6 +56,7 @@ HARD_EXCLUDE_FILE_NAMES = {
     "Thumbs.db",
     ".coverage",
     "coverage.xml",
+    ".error_kb.json",
 }
 
 HARD_EXCLUDE_SUFFIXES = (
@@ -240,7 +241,13 @@ def _hard_excluded(rel_parts: Sequence[str], name: str, is_dir: bool) -> bool:
             return True
         if part.endswith(".egg-info"):
             return True
+        # safety: literal shell-variable dirs (e.g. "$PWD") created by a literal
+        # env path (error_kb bug) must never be packaged
+        if part.startswith("$"):
+            return True
     if name in HARD_EXCLUDE_FILE_NAMES:
+        return True
+    if name.startswith("$"):
         return True
     if not is_dir:
         lower = name.lower()

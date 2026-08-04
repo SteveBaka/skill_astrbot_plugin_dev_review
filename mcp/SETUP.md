@@ -117,6 +117,7 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_plugin_uninstall` | **[P2]** DELETE uninstall (**mutations** + confirm; **default keep config/data**) |
 | `astrbot_plugin_pack_preview` | **[P2]** Dry-run local ZIP pack (gitignore; **no upload**) |
 | `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → upload → enable → reload → failed (**mutations**; optional `force_refresh`) |
+| `astrbot_plugin_failed_remove` | **[P2]** Remove a failed-plugin record (`DELETE .../plugins/failed/{id}`, v4.27.0) — the only API that clears stale failed entries blocking all mutations (**mutations** + confirm; keep config/data by default) |
 | `astrbot_providers_brief` | **[P2.5]** Provider id/name list (no secrets) |
 | `astrbot_config_profiles_brief` | **[P2.5]** Profile names/ids only |
 | `astrbot_post_install_hints` | **[P2.5]** Dashboard checklist (no config reads) |
@@ -242,6 +243,18 @@ edit source on MCP host machine
   → astrbot_plugin_pack_preview(path)   # optional
   → astrbot_plugin_install_path(path)   # zip + upload + enable + reload + failed
 ```
+
+**Install failure troubleshooting order (real-world lesson):**
+1. `astrbot_plugin_failed` first — decide strategy by WHERE the plugin is:
+   - only in the **failed list** (not the normal list) → a stale failed record blocks
+     all mutations (generic `插件操作失败`). **Stop retrying**; clean it in Dashboard/
+     filesystem, then re-upload (`install_path` result reports `stale_failed`).
+   - in the normal list but load error → fix code, bump version or re-upload.
+2. Fix code → re-upload. If re-upload is **rejected quickly** (~200ms) while GET works
+   → server-side worker issue, not network/code: verify upload actually landed
+   (same-version re-upload may be stale; bump version or `force_refresh`).
+3. `force_refresh` only re-installs plugins already in the **normal** list; it does
+   **not** clear failed-list-only entries.
 
 | Detail | Behavior |
 |--------|----------|
@@ -411,7 +424,11 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
   for recurring unclassified errors.
   ```bash
   # opt-in: record install/smoke diagnoses automatically
-  export ASTRBOT_ERROR_KB="$PWD/.error_kb.json"   # gitignored
+  # ⚠️ Use an ABSOLUTE path or a temp dir OUTSIDE the plugin dir. A literal
+  # "$PWD/..." (unexpanded) creates a "$PWD" folder inside the CWD — and if that
+  # CWD is a plugin being packed, it pollutes the ZIP. zip_pack now hard-excludes
+  # "$"-prefixed dirs, but still use an absolute path.
+  export ASTRBOT_ERROR_KB="$(pwd)/.error_kb.json"   # gitignored; absolute
   # CLI (record one / report / propose new FIX entries)
   python3 scripts/error_kb.py --store /tmp/kb.json record --error "No module named 'x'" --rule FIX-00 --source plugin
   python3 scripts/error_kb.py --store /tmp/kb.json report
@@ -419,8 +436,18 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
   ```
   Recorded samples never contain secrets/paths.
 
+  **If a literal `$PWD` dir still got created and you must delete it — NEVER run
+  `rm -rf "$PWD"`** (the shell expands `$PWD` to the current working directory and
+  deletes everything). Use an escaped form or `find`:
+  ```bash
+  rm -rf "\$PWD"                                    # literal "$PWD" name
+  # or
+  find <plugin_dir> -maxdepth 1 -name '$PWD' -exec rm -rf {} +
+  ```
+  See `review/auto-fix-guide.md` FIX-33.
+
   **Regression feedback loop (plugin-types + adapters):**
-  1. `export ASTRBOT_ERROR_KB="$PWD/.error_kb.json"`
+  1. `export ASTRBOT_ERROR_KB="$(pwd)/.error_kb.json"`  # absolute path
   2. Run `astrbot_smoke_suite` / `install_path` on `plugin-types/type*` and the
      adapter under test; errors auto-record into the KB.
   3. `report` → review desensitized samples + counts + source plugins.

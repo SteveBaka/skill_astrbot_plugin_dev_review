@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from .contracts import (
+    ADAPTER_CONFIG_CORE_BUILTIN_KEYS,
     ADAPTER_CONFIG_CORE_INJECTED_KEYS,
     ADAPTER_PLATFORM_RESERVED_ATTRS,
     ADAPTER_REQUIRED_METHODS,
@@ -528,11 +529,19 @@ class _AdapterFileChecker(ast.NodeVisitor):
         self.source = source
         self.findings: List[Finding] = []
         self.platform_classes: List[ast.ClassDef] = []
+        self.star_classes: List[ast.ClassDef] = []
         self.has_register = "register_platform_adapter" in source
         self.top_level_modules: Set[str] = set()
 
     def out(self, rule: str, sev: str, line: int, msg: str, hint: str = "") -> None:
         self.findings.append(Finding(rule, sev, self.rel, line, msg, hint))
+
+    def _is_star_subclass(self, node: ast.ClassDef) -> bool:
+        for base in node.bases:
+            name = base.id if isinstance(base, ast.Name) else getattr(base, "attr", "")
+            if name == "Star":
+                return True
+        return False
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -579,6 +588,8 @@ class _AdapterFileChecker(ast.NodeVisitor):
         return False
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        if self._is_star_subclass(node):
+            self.star_classes.append(node)
         if self._is_platform_subclass(node):
             self.platform_classes.append(node)
             method_names = {
@@ -657,6 +668,24 @@ class _AdapterFileChecker(ast.NodeVisitor):
                     "author tmpl — core fills them. Prefer custom fields only "
                     "(docs FakePlatform). Do not use _conf_schema.json for adapters.",
                 )
+            # FIX-32: redefining core SHARED metadata names pollutes other adapters'
+            # forms (config_service merges all config_metadata into one items dict
+            # by field name). Prefix custom fields.
+            builtin_hit = sorted(set(keys) & ADAPTER_CONFIG_CORE_BUILTIN_KEYS)
+            if builtin_hit:
+                self.out(
+                    "FIX-32",
+                    "warning",
+                    node.lineno,
+                    f"`{kw.arg}` redefines core shared metadata key(s) {builtin_hit}",
+                    "config_service inject_platform_metadata_with_i18n merges every "
+                    "adapter's config_metadata into ONE shared items dict via "
+                    "dict.update() — redefining 'port'/'callback_server_host'/"
+                    "'unified_webhook_mode'/'webhook_uuid' overwrites the built-in "
+                    "entry (and its condition) for ALL adapters' forms. Prefix your "
+                    "custom fields (e.g. xx_port) — see FIX-32 (real-world adapter "
+                    "config_metadata collision).",
+                )
 
     def run(self) -> "_AdapterFileChecker":
         self.visit(self.tree)
@@ -712,6 +741,7 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
     all_modules: Set[str] = set()
     any_platform = False
     any_register = False
+    any_star = False
     py_files = sorted(
         p
         for p in root.rglob("*.py")
@@ -730,7 +760,7 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
                     "SYNTAX",
                     "error",
                     rel,
-                    exp.lineno or 0 if False else (exc.lineno or 0),
+                    exc.lineno or 0,
                     f"SyntaxError: {exc.msg}",
                     "Fix syntax before adapter load.",
                 )
@@ -743,6 +773,8 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
             any_platform = True
         if checker.has_register:
             any_register = True
+        if checker.star_classes:
+            any_star = True
         report.files_checked += 1
 
     if not any_platform:
@@ -765,6 +797,20 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
                 0,
                 "register_platform_adapter not found in package",
                 "Adapters should use @register_platform_adapter(...).",
+            )
+        )
+    if any_register and not any_star:
+        report.add(
+            Finding(
+                "FIX-30",
+                "error",
+                "main.py",
+                0,
+                "adapter package registers a platform but has no Star subclass",
+                "Adapters need DUAL registration: keep @register_platform_adapter, "
+                "AND add a Star entry class (class XxxPlugin(Star) with "
+                "super().__init__(context)) so star_manager loads the plugin. "
+                "Missing it raises '未通过 Star 注册'.",
             )
         )
 

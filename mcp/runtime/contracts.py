@@ -375,6 +375,23 @@ ADAPTER_CONFIG_CORE_INJECTED_KEYS: FrozenSet[str] = frozenset(
     {"id", "enable", "type"}
 )
 
+# Core SHARED platform metadata field names (astrbot/core/config/default.py
+# platform_group.metadata.platform.items + register.py injects). config_service
+# merges every adapter's config_metadata into this ONE dict by field name via
+# items.update(...) — redefining these names overwrites the built-in entry
+# (and its condition) for ALL adapters' forms. Prefix custom fields instead.
+ADAPTER_CONFIG_CORE_BUILTIN_KEYS: FrozenSet[str] = frozenset(
+    {
+        "id",
+        "enable",
+        "type",
+        "port",
+        "callback_server_host",
+        "unified_webhook_mode",
+        "webhook_uuid",
+    }
+)
+
 ADAPTER_REQUIRED_METHODS: FrozenSet[str] = frozenset({"run", "meta", "send_by_session"})
 
 

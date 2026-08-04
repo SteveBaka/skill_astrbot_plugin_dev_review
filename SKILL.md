@@ -381,7 +381,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   6b. `astrbot_chat_sessions_cleanup` — **webchat-platform-only** deletion with verification against the username's session list (other platforms → `scope_violation`); needs mutations + `confirm_cleanup=true` + user-reviewed list; can only delete sessions created via the API key itself.
   6c. `astrbot_scaffold_plugin(name, author, plugin_type=command|llm_tool|session|cron|hook|web|agent|adapter, …)` — contracts skeleton; **must** finish with review error=0. `adapter` = frame only (no WebChat smoke until you provide a live adapter). BUSINESS edits only after.
   6c-bis. **Staging → install, never hand-copy**: `output_dir` is only a staging area (default `ASTRBOT_DEV_WORKSPACE` or `~/.astrbot_skill_workspace`; **never cwd**). Always upload via `astrbot_plugin_install_path(path)`; the INSTALLED path is `<data>/plugins/<root_dir_name>/` no matter where the staging dir is. Do **not** ask the user to copy files into `/AstrBot/<name>/`. Use `extra_files_json` to deliver the full plugin in one call (main.py / metadata.yaml / requirements.txt / **_conf_schema.json** / README.md). If a plugin reads `config`, it **must ship `_conf_schema.json`**, or `config_set` returns 400 "没有注册配置".
-  6d. `astrbot_review_path(path, profile=plugin|adapter)` — AST review (shared contracts); FIX-03 hooks on plugin profile; **FIX-06** on adapter (`id`/`enable` ban, **no `_conf_schema.json`**, no Platform attr shadow). Before install_path; fix all `error` first.
+  6d. `astrbot_review_path(path, profile=plugin|adapter)` — AST review (shared contracts); FIX-03 hooks on plugin profile; **FIX-06** on adapter (`id`/`enable` ban, **no `_conf_schema.json`**, no Platform attr shadow); **FIX-30** adapter dual-registration (`register_platform_adapter` without a `Star` subclass → "未通过 Star 注册"); **FIX-32** prefix custom config_metadata fields (shared-items collision). Before install_path; fix all `error` first.
   6d-adapter: Follow official `astrbot/core/platform/register.py` + plugin-platform-adapter.md — custom fields only in tmpl (core injects type/enable/id); **never** Star `_conf_schema.json` for adapters.
   6e. `astrbot_smoke_suite(plugin_id, confirm=true, username=…)` — only **after** user configures Dashboard (enable, profile `plugin_set`, `_conf_schema`). Loop: scaffold → review_path → install_path → **user Dashboard** → smoke_suite.
   6f. `astrbot_chat_probe(message=…)` — fill `message` with the **plugin's own command** (from components). Use `/plugin_help` as a minimal discovery probe when unsure; **never hardcode other plugins' commands** (e.g. `/ttsinfo` is mimo_tts-only).
@@ -479,8 +479,10 @@ Goal: stronger Star understanding **and** low token/time cost via **strict on-de
 When running regression on `plugin-types/type*` or an adapter and hitting
 install/smoke errors:
 
-1. `export ASTRBOT_ERROR_KB="$PWD/mcp/.error_kb.json"` (gitignored) so
+1. `export ASTRBOT_ERROR_KB="$(pwd)/.error_kb.json"` (absolute; gitignored) so
    `install_path` / `smoke_suite` failures auto-record **desensitized** fingerprints.
+   Never set it to a literal `$PWD/...` (unexpanded) — that creates a `$PWD` dir
+   inside the CWD (see FIX-33).
 2. `python3 mcp/scripts/error_kb.py --store <path> report` — review samples/counts.
 3. `python3 mcp/scripts/error_kb.py --store <path> propose --guide review/auto-fix-guide.md --min 2`
    — writes drafts **only for validated entries** (no duplicates / not too generic);

@@ -226,6 +226,7 @@ def register_runtime_tools(mcp: Any) -> None:
         reload: bool = True,
         ignore_version_check: bool = False,
         force_refresh: bool = False,
+        clear_failed: bool = False,
     ) -> str:
         """
         [RUNTIME P2] Scheme A: pack local plugin → install/upload → enable → reload → failed.
@@ -238,6 +239,9 @@ def register_runtime_tools(mcp: Any) -> None:
         stale). If components/behavior unchanged: bump metadata.version, or set
         force_refresh=true (uninstall keep config+data → re-upload). Default never
         auto-uninstall; may return warning possible_stale_install.
+        clear_failed=true: if the plugin exists only in the FAILED list (stale
+        failed record blocking all mutations), DELETE .../plugins/failed/{id}
+        (keep config+data) first, then upload. Opt-in; never auto-clears.
         Needs ASTRBOT_ALLOW_MUTATIONS=true. Prefer testing on user-approved sandbox
         plugins (e.g. astrbot_plugin_mimo_tts) only.
         """
@@ -247,9 +251,37 @@ def register_runtime_tools(mcp: Any) -> None:
             reload=reload,
             ignore_version_check=ignore_version_check,
             force_refresh=force_refresh,
+            clear_failed=clear_failed,
         )
 
     # ── P2.5 plugin_dev_skill + privacy-safe hints ─────────────
+
+    @mcp.tool()
+    def astrbot_plugin_failed_remove(
+        plugin_id: str,
+        confirm: bool = False,
+        keep_config: bool = True,
+        keep_data: bool = True,
+        confirm_delete_config: bool = False,
+        confirm_delete_data: bool = False,
+    ) -> str:
+        """
+        [RUNTIME P2] Remove a FAILED-plugin record (DELETE .../plugins/failed/{id}).
+
+        The ONLY API that clears a stale failed entry (v4.27.0). Plugins present
+        only in the failed list block all normal mutations (generic '插件操作失败')
+        and can't be removed via uninstall or force_refresh — remove the failed
+        record first, then re-install. Needs mutations + confirm. Config/data are
+        kept by default; deletes need explicit keep_*=false + confirm_delete_*.
+        """
+        return tools_lifecycle.astrbot_plugin_failed_remove(
+            plugin_id=plugin_id,
+            confirm=confirm,
+            keep_config=keep_config,
+            keep_data=keep_data,
+            confirm_delete_config=confirm_delete_config,
+            confirm_delete_data=confirm_delete_data,
+        )
 
     @mcp.tool()
     def astrbot_providers_brief() -> str:

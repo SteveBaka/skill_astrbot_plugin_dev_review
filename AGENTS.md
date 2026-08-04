@@ -17,6 +17,7 @@ This directory is a **complete skill system** for AstrBot plugin development wit
    - **WebChat test profile**: `plugin_dev_skill` … fixed session `mcp-smoke-<username>`; no auto-deletion / no system log tail
    - **chat_probe message**: always use the **plugin's own command**; `/plugin_help` to discover when unsure; never hardcode `/ttsinfo` (mimo_tts only)
    - **Staging → install (no hand-copy)**: `scaffold_plugin` output_dir is staging only (default `ASTRBOT_DEV_WORKSPACE` / `~/.astrbot_skill_workspace`, never cwd). Upload via `install_path`; installed path is always `<data>/plugins/<root_dir_name>/`. Never tell the user to copy files into `/AstrBot/<name>/`. Deliver full files (incl. `_conf_schema.json` when the plugin uses `config`) via `extra_files_json`, else `config_set` 400s "没有注册配置"
+   - **Install failure order**: check `astrbot_plugin_failed` first. Plugin only in failed list + generic `插件操作失败` → **stale failed record** blocks all mutations — remove it with `astrbot_plugin_failed_remove(confirm=true)` (or `install_path(clear_failed=true)`), then re-upload. `force_refresh` does NOT clear failed-list-only entries. Adapter "未通过 Star 注册" → missing `Star` subclass (FIX-30, dual registration).
    - **WebChat session cleanup**: webchat-only + confirms; API key cannot delete user sessions
    - **Privacy**: do not auto-read plugin/AstrBot configs unless user names the keys; post-install = Dashboard hints only
    - After first code output: **Phase A** review (prefer `astrbot_review_path` + targeted FIX reads)

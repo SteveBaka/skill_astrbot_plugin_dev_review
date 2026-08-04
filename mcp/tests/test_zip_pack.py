@@ -144,6 +144,22 @@ class TestHardExcludes:
         assert _hard_excluded((), "mod.PYC", False)  # case-insensitive suffix
         assert not _hard_excluded(("services",), "api.py", False)
 
+    def test_dollar_dir_excluded(self, tmp_path):
+        # regression: literal "$PWD" dir from unexpanded env must never be packed
+        root = _make_plugin(tmp_path)
+        dollar = root / "$PWD"
+        dollar.mkdir()
+        (dollar / ".error_kb.json").write_text("{}")
+        (dollar / "leak.txt").write_text("x")
+        # also a stray .error_kb.json at plugin root
+        (root / ".error_kb.json").write_text("{}")
+        r = pack_plugin_directory(root)
+        assert r.ok
+        names = _zip_names(r.zip_bytes)
+        assert all("$PWD" not in n for n in names)
+        assert all(".error_kb.json" not in n for n in names)
+        assert all("leak.txt" not in n for n in names)
+
 
 # ── .gitignore layer (plugin-local rules) ──────────────────────
 

@@ -274,6 +274,7 @@ def astrbot_plugin_install_path(
     reload: bool = True,
     ignore_version_check: bool = False,
     force_refresh: bool = False,
+    clear_failed: bool = False,
 ) -> str:
     """
     Pack local plugin directory and install via OpenAPI upload.
@@ -326,10 +327,67 @@ def astrbot_plugin_install_path(
         "present": False
     }
 
+    # stale-failed detection: plugin NOT in normal list but present in failed list
+    # → mutations (upload/enable/reload/uninstall) are typically blocked server-side
+    # with generic "插件操作失败"; force_refresh cannot fix it (only failed entry).
+    stale_failed: Optional[Dict[str, Any]] = None
+    if not before_snap.get("present") and guessed_id:
+        failed_resp = client.get("/api/v1/plugins/failed")
+        if failed_resp.ok and isinstance(failed_resp.data, dict):
+            fdata = failed_resp.data.get("data") or {}
+            rec = None
+            if isinstance(fdata, dict):
+                for k, v in fdata.items():
+                    if guessed_id in (str(k), str(v.get("name")) if isinstance(v, dict) else ""):
+                        rec = v
+                        break
+            if rec is not None:
+                stale_failed = {
+                    "detected": True,
+                    "plugin_id": guessed_id,
+                    "detail": rec if isinstance(rec, dict) else str(rec)[:200],
+                    "hint": (
+                        "Plugin exists ONLY in the failed list — server-side stale "
+                        "failed record blocks all mutations (install/enable/reload/"
+                        "uninstall return '插件操作失败，请查看服务端日志'). "
+                        "force_refresh cannot clear it. Clean it up in Dashboard "
+                        "(or filesystem) first, then re-upload. Do not keep retrying."
+                    ),
+                }
+
     refresh_mode = "upload_only"
     pre_uninstall: Optional[Dict[str, Any]] = None
+    pre_clear_failed: Optional[Dict[str, Any]] = None
 
-    # force_refresh: only when already installed — uninstall keep_* then upload
+    # clear_failed: when a stale failed record blocks all mutations, remove it
+    # first (keep config/data) then upload. Opt-in — never auto-delete.
+    if stale_failed and clear_failed:
+        del_res = client.delete(
+            f"/api/v1/plugins/failed/{encode_plugin_id(guessed_id)}",
+            json_body={"delete_config": False, "delete_data": False},
+        )
+        pre_clear_failed = del_res.to_dict()
+        refresh_mode = "cleared_failed_then_upload"
+        if del_res.ok:
+            # re-snapshot: plugin should now be absent entirely
+            before_snap = _plugin_get_snapshot(client, guessed_id)
+        else:
+            return _dumps(
+                {
+                    "ok": False,
+                    "error": (
+                        "clear_failed requested but DELETE .../plugins/failed/{id} "
+                        "failed; upload not attempted."
+                    ),
+                    "error_kind": "clear_failed_failed",
+                    "plugin_id": guessed_id,
+                    "pre_clear_failed": pre_clear_failed,
+                    "stale_failed": stale_failed,
+                }
+            )
+
+    # force_refresh: only when already installed — uninstall keep_* then upload.
+    # Does NOT handle plugins that only exist in the failed list (see stale_failed).
     if force_refresh and before_snap.get("present") and guessed_id:
         pre_uninstall = _uninstall_keep_all(client, guessed_id)
         refresh_mode = "reinstall_keep_config_data"
@@ -373,6 +431,9 @@ def astrbot_plugin_install_path(
         "zip_filename": zip_name,
         "refresh_mode": refresh_mode,
         "force_refresh": bool(force_refresh),
+        "clear_failed": bool(clear_failed),
+        "stale_failed": stale_failed,
+        "pre_clear_failed": pre_clear_failed,
         "pack_main_py_sha256_16": main_hash,
         "snapshot_before": {
             "present": before_snap.get("present"),
@@ -412,10 +473,17 @@ def astrbot_plugin_install_path(
     if not upload.ok:
         conflict = _looks_like_same_name_conflict(upload.ok, upload.data, upload.error)
         out["same_name_conflict_suspected"] = conflict
-        out["next_step"] = (
-            "Fix upload error_kind (auth/timeout/http_status). "
-            "Verify ZIP structure: top-level folder + metadata.yaml + main.py."
-        )
+        if stale_failed:
+            out["next_step"] = (
+                "Upload rejected while a STALE FAILED record for this plugin exists "
+                "(see stale_failed). Stop retrying: clean the plugin from Dashboard "
+                "failed list / filesystem, then re-upload."
+            )
+        else:
+            out["next_step"] = (
+                "Fix upload error_kind (auth/timeout/http_status). "
+                "Verify ZIP structure: top-level folder + metadata.yaml + main.py."
+            )
         if conflict:
             out["next_step"] = SAME_NAME_CONFLICT_HINT
             out["fallback"] = {

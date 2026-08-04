@@ -98,6 +98,7 @@ class BadAdapt(Platform):
         (d / "main.py").write_text(
             '''import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
 from astrbot.api.event import MessageChain
 
@@ -118,6 +119,10 @@ class BadCfg(Platform):
 
     async def send_by_session(self, session, message_chain: MessageChain):
         pass
+
+class BadCfgPlugin(Star):  # Star entry so only FIX-06 redundant-key warning fires
+    def __init__(self, context: Context):
+        super().__init__(context)
 ''',
             encoding="utf-8",
         )

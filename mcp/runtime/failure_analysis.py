@@ -118,6 +118,27 @@ _SIGNATURES: List[Tuple[re.Pattern[str], str, Optional[str], str]] = [
         None,
         "Filesystem permission problem in the plugin store — check AstrBot data dir.",
     ),
+    (
+        re.compile(
+            r"未通过 Star 注册|未找到旧版插件类|no Star (subclass|registration)",
+            re.I,
+        ),
+        "adapter_missing_star_entry",
+        "FIX-30",
+        "Adapter plugins need DUAL registration: @register_platform_adapter registers "
+        "the platform, but the plugin dir still needs a Star subclass "
+        "(class XxxPlugin(Star) with super().__init__(context)) so star_manager can "
+        "load it. Missing Star reports '未通过 Star 注册'.",
+    ),
+    (
+        re.compile(r"插件操作失败，请查看服务端日志|plugin operation failed", re.I),
+        "plugin_op_failed_generic",
+        None,
+        "Generic server-side mutation failure — likely a stale failed-plugin record "
+        "blocking all install/enable/reload/uninstall. Check plugins/failed: if the "
+        "plugin appears there but NOT in the normal list, clean it up in Dashboard/"
+        "filesystem first, then re-upload. Repeated retries without cleanup fail.",
+    ),
 ]
 
 # Traceback frames worth surfacing: prefer lines inside the plugin's own dir.

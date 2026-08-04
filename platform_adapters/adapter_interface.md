@@ -193,6 +193,29 @@ default_config_tmpl={
 # and never ship _conf_schema.json in an adapter package
 ```
 
+### FIX-32: prefix custom config_metadata field names
+
+`config_service.inject_platform_metadata_with_i18n` merges **all** adapters'
+`config_metadata` into ONE shared `platform_group.metadata.platform.items` dict
+via `dict.update()` (by field name). Core built-ins in that dict include
+`port` (回调服务器端口), `callback_server_host`, `unified_webhook_mode`,
+`webhook_uuid`. **Redefining any of these names overwrites the built-in entry
+(and its `condition`) for every adapter's form** — e.g. QQ 官方/公众号 forms
+would show your adapter's `port` description.
+
+**Always prefix custom fields** with your adapter id:
+
+```python
+# ✅ prefixed (safe)
+default_config_tmpl={"xx_token": "", "xx_port": 7300},
+config_metadata={
+    "xx_port": {"description": "Platform WebUI 端口", "type": "int", ...},
+}
+# read: self.config.get("xx_port")
+```
+
+Reviewer warns (`FIX-32`) on core built-in names in tmpl/metadata.
+
 ### config_metadata Type and Hint Rules
 
 - `type` must be one of: `string`, `text`, `int`, `float`, `bool`

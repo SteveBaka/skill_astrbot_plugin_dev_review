@@ -596,6 +596,114 @@ class PromptBuilder:
 
 ---
 
+### FIX-30: Adapter missing Star entry (dual registration)
+
+**Problem**: `plugins/failed` reports `插件 … 未通过 Star 注册`（或 `未找到旧版插件类`）for a platform adapter. The package has `@register_platform_adapter(...)` but **no Star subclass**.
+
+**Why**: AstrBot adapters are **dual-registration**:
+1. `@register_platform_adapter` registers the platform into the platform list (Dashboard 适配器) at import time.
+2. The plugin directory **still needs a `Star` subclass** (class name ends with `Plugin` or is `Main`) so `star_manager` recognizes it as a loaded plugin.
+
+Both are required. Missing the Star class does **not** say "adapter not found" — it says "未通过 Star 注册".
+
+```python
+from astrbot.api.star import Context, Star  # correct import path
+
+class MyAdapterPlugin(Star):                # name ends with Plugin
+    def __init__(self, context: Context):
+        super().__init__(context)
+```
+
+**Reviewer**: `astrbot_review_path(path, profile="adapter")` flags this as `FIX-30` (error) when `register_platform_adapter` is present but no `Star` subclass is found anywhere in the package.
+
+---
+
+### FIX-31: Stale failed record blocks all plugin mutations
+
+**Problem**: `install_path` / `set_enabled` / `reload` / `uninstall` all return a **generic** `插件操作失败，请查看服务端日志。` while GET endpoints (plugin list, failed probe) work fine.
+
+**Cause**: the plugin exists **only in the failed list** (a stale/half-broken failed record). The upload does not overwrite it, and uninstall/enable/reload cannot touch it → a deadlock that only manual cleanup resolves.
+
+**Diagnosis (MCP)**: `astrbot_plugin_install_path` auto-detects this (`stale_failed` in the result): `snapshot_before.present=false` + plugin present in `/plugins/failed`.
+
+**Fix order**:
+1. `astrbot_plugin_failed` → if the plugin is there but not in the normal list: **stop retrying**.
+2. Clean it in Dashboard (or the AstrBot filesystem) → failed list empty → re-upload succeeds.
+3. `force_refresh` does **not** clear failed-list-only entries (it uninstalls from the normal list first).
+
+---
+
+### FIX-32: Adapter config_metadata field-name collision (shared items dict)
+
+**Problem**: redefining a **core shared** metadata field name in `config_metadata`
+/ `default_config_tmpl` overwrites it for **ALL** adapters' forms.
+
+**Why (source-verified, v4.27.0)**:
+`astrbot/dashboard/services/config_service.py:913-929` `inject_platform_metadata_with_i18n`
+merges every adapter's `config_metadata` into **one shared dict**
+`platform_group.metadata.platform.items` via `dict.update()` (by field name).
+That dict already holds core built-ins such as:
+
+| key | description | built-in condition |
+|-----|-------------|--------------------|
+| `port` | 回调服务器端口 | `{unified_webhook_mode: False}` |
+| `callback_server_host` | 回调服务器主机 | `{unified_webhook_mode: False}` |
+| `unified_webhook_mode` | 统一 Webhook 模式 | — |
+| `webhook_uuid` | Webhook UUID | invisible |
+
+If any adapter registers `port` (or `token`/`host`/`api_key`, etc. shared with
+another adapter), `items.update()` replaces the built-in entry **and drops its
+`condition`** — the frontend then shows that adapter's description for **every**
+platform that renders the shared items (QQ 官方 / 公众号 / 企微 / …).
+
+**Fix (plugin-side)**: **prefix all custom fields** with the adapter id:
+
+```python
+# ❌ generic names risk cross-adapter collision
+default_config_tmpl={"token": "", "port": 7300}
+
+# ✅ prefixed
+default_config_tmpl={"xx_token": "", "xx_port": 7300}
+# ...and read self.config.get("xx_token") everywhere
+```
+
+**Reviewer**: `astrbot_review_path(profile="adapter")` warns (`FIX-32`) when
+`config_metadata`/`default_config_tmpl` uses core built-in names
+(`port`/`callback_server_host`/`unified_webhook_mode`/`webhook_uuid`/`id`/`enable`/`type`).
+
+Real-world case: an adapter that registered `port` polluted other platforms'
+forms; fixed by prefixing every field (`xx_port`, `xx_token`).
+
+---
+
+### FIX-33: error_kb `$PWD` pollution — and NEVER `rm -rf "$PWD"` (shell hazard)
+
+**Problem A (pollution)**: setting `ASTRBOT_ERROR_KB` to a **literal** `$PWD/...`
+(unexpanded by the shell) makes `FingerprintStore` create a directory literally
+named `$PWD` in the current working directory. If that CWD is a plugin being
+packed, `install_path`'s ZIP gets polluted with `<plugin>/$PWD/mcp/.error_kb.json`.
+- `zip_pack` now **hard-excludes** any `$`-prefixed dir/file and `.error_kb.json`.
+- Prevention: use an absolute path — `export ASTRBOT_ERROR_KB="$(pwd)/.error_kb.json"`.
+
+**Problem B (incident, 2026-08 — data-loss)**: deleting the polluted dir with
+`rm -rf "$PWD"` is **catastrophic**: the shell expands `$PWD` to the current
+working directory, so the command deletes the whole CWD (e.g. the entire plugin
+directory). Never use unescaped `$PWD` inside `rm -rf`.
+
+**Safe cleanup**:
+```bash
+# literal "$PWD" directory name — escape the dollar
+rm -rf "\$PWD"
+# or target by name without shell expansion
+find <plugin_dir> -maxdepth 1 -name '$PWD' -exec rm -rf {} +
+```
+
+**Rule for agents doing shell cleanup**: quote/escape `$` when the intent is a
+literal `$` character; double-check `pwd` before any `rm -rf`; prefer `find
+-name '...' -exec rm -rf {} +` for unusual names.
+
+---
+
 ## Verification
 
 After each fix, re-run the full audit from `review/review-workflow.md`:

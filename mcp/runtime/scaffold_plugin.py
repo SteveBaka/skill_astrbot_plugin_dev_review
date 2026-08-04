@@ -500,6 +500,7 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
 from astrbot.api.platform import Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
 
 
@@ -508,15 +509,15 @@ from astrbot.core.platform.register import register_platform_adapter
     "Scaffold adapter framework — complete run/send before production use",
     # Official style: custom fields only. register.py injects type/enable/id if absent.
     # Do NOT add _conf_schema.json (Star plugin channel). See FIX-06 / register.py.
-    default_config_tmpl={{"token": "", "base_url": ""}},
+    default_config_tmpl={{"{adapter_id}_token": "", "{adapter_id}_base_url": ""}},
     config_metadata={{
-        "token": {{
+        "{adapter_id}_token": {{
             "description": "Bot / API token",
             "type": "string",
             "hint": "Platform credential",
             "secret": True,
         }},
-        "base_url": {{
+        "{adapter_id}_base_url": {{
             "description": "Service base URL",
             "type": "string",
             "hint": "https://…",
@@ -566,6 +567,20 @@ class {class_name}(Platform):
     async def terminate(self):
         self._running = False
         logger.info("{class_name} terminated")
+
+
+# ── Star entry (REQUIRED dual registration, FIX-30) ────────────
+# @register_platform_adapter only registers the platform; star_manager still
+# needs a Star subclass to load this plugin dir. Missing it raises
+# "未通过 Star 注册".
+
+
+class {class_name}Plugin(Star):
+    def __init__(self, context: Context):
+        super().__init__(context)
+
+    async def terminate(self):
+        logger.info("{class_name}Plugin unloaded")
 '''
 
 
@@ -589,6 +604,16 @@ This is a **framework-only** platform adapter (not a drop-in working bridge).
 2. Core **auto-fills** missing `type` / `enable` / `id` — prefer omit them in author tmpl.
 3. **No `_conf_schema.json`** (Star plugin config only).
 4. Avoid shadowing Platform `client` / event queue; use private names.
+5. **Prefix custom fields** (`<adapter_id>_token` …): config_service merges every
+   adapter's config_metadata into ONE shared dict by field name — redefining
+   `port`/`callback_server_host`/`unified_webhook_mode`/`webhook_uuid` overwrites
+   the built-in entry for ALL adapters' forms (FIX-32, real-world adapter collision).
+
+## FIX-30 (dual registration — REQUIRED)
+
+`@register_platform_adapter` registers the platform; the plugin dir **also** needs a
+`Star` subclass (`XxxPlugin(Star)`) so star_manager loads it. This frame ships both.
+Missing the Star class → "未通过 Star 注册".
 
 Static: `astrbot_review_path(path, profile="adapter")`.
 """

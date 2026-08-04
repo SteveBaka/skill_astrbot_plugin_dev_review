@@ -201,3 +201,102 @@ def astrbot_plugin_uninstall(
         )
         payload["warning_kv"] = policy["framework_kv_note"]
     return _dumps(payload)
+
+
+def astrbot_plugin_failed_remove(
+    plugin_id: str,
+    *,
+    confirm: bool = False,
+    keep_config: bool = True,
+    keep_data: bool = True,
+    confirm_delete_config: bool = False,
+    confirm_delete_data: bool = False,
+) -> str:
+    """
+    DELETE /api/v1/plugins/failed/{plugin_id} — remove a FAILED-plugin record.
+
+    This is the ONLY API that clears a stale failed entry (v4.27.0). Plugins that
+    exist only in the failed list block ALL normal mutations (install/enable/
+    reload/uninstall return generic '插件操作失败') and cannot be removed via
+    DELETE /plugins/{id} or force_refresh.
+
+    Safety mirrors plugin_uninstall: mutations env + confirm required; config/data
+    deleted only with explicit keep_*=false AND the matching confirm_delete_*.
+    """
+    policy = uninstall_policy_help()
+
+    cfg = load_config()
+    if not cfg.allow_mutations:
+        payload = mutation_denied_payload("plugin_failed_remove")
+        payload["policy"] = policy
+        return _dumps(payload)
+
+    pid = _require_plugin_id(plugin_id)
+    if not pid:
+        return _dumps(
+            {
+                "ok": False,
+                "error": "plugin_id is required",
+                "error_kind": "bad_request",
+                "policy": policy,
+            }
+        )
+
+    if not confirm:
+        return _dumps(
+            {
+                "ok": False,
+                "error": (
+                    "failed_remove not executed: confirm=false. "
+                    "Ask the user first (this deletes the plugin's failed record); "
+                    "default keeps config and data unless user says otherwise."
+                ),
+                "error_kind": "confirm_required",
+                "plugin_id": pid,
+                "policy": policy,
+            }
+        )
+
+    delete_config = not bool(keep_config)
+    delete_data = not bool(keep_data)
+    if delete_config and not confirm_delete_config:
+        return _dumps(
+            {
+                "ok": False,
+                "error": "Refused: keep_config=false needs confirm_delete_config=true.",
+                "error_kind": "delete_config_confirm_required",
+                "plugin_id": pid,
+                "policy": policy,
+            }
+        )
+    if delete_data and not confirm_delete_data:
+        return _dumps(
+            {
+                "ok": False,
+                "error": "Refused: keep_data=false needs confirm_delete_data=true.",
+                "error_kind": "delete_data_confirm_required",
+                "plugin_id": pid,
+                "policy": policy,
+            }
+        )
+
+    body = {
+        "delete_config": bool(delete_config),
+        "delete_data": bool(delete_data),
+    }
+    client = AstrBotClient(cfg)
+    result = client.delete(
+        f"/api/v1/plugins/failed/{encode_plugin_id(pid)}",
+        json_body=body,
+    )
+    payload = result.to_dict()
+    payload["plugin_id"] = pid
+    payload["mutation"] = "failed_remove"
+    payload["request_body"] = body
+    payload["kept"] = {"config": not delete_config, "data": not delete_data}
+    if result.ok:
+        payload["next_step"] = (
+            "Failed record removed. Now re-run astrbot_plugin_install_path(path) "
+            "to upload a fresh copy."
+        )
+    return _dumps(payload)
