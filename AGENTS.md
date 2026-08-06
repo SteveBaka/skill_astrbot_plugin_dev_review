@@ -59,7 +59,7 @@ This directory is a **complete skill system** for AstrBot plugin development wit
 
 **Do not use as authority**: `docs/en/dev/plugin.md` (legacy redirect only)
 
-**Target core for current notes**: **≥4.26.8** (recommend); skill still documents ≥4.16 floor
+**Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes); skill still documents ≥4.16 floor
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
 

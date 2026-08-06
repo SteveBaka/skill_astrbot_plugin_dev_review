@@ -39,17 +39,17 @@ from astrbot.api import logger
 - **卸载清 KV**（≥4.26.2）：卸载后插件 KV 会被清理
 - **插件市场 / 发布**（≥4.26.8）：[AstrBot Cloud](https://cloud.astrbot.app) 为新市场；发布 ZIP **≤16MB**
 - **配置 dict 默认值**（≥4.26.8）：核心为字典配置字段补默认值映射
-- **按插件日志级别**（≥4.26.8）：Dashboard / `PUT .../plugins/{id}/log-level`
+- **按插件日志级别**（≥4.27.0）：Dashboard / `PUT .../plugins/{id}/log-level`（4.26.8 源码即有，4.27.0 进入公开 OpenAPI）
 
 ---
 
 > ## ⚠️ 开始之前：确认你的 AstrBot 版本
 >
-> 本 Skill 的规则与示例以 **≥4.26.8** 为目标（也兼容 ≥4.16 的地板）。**动手生成插件前**：
+> 本 Skill 的规则与示例以 **≥4.27.0** 为目标（也兼容 ≥4.16 的地板）。**动手生成插件前**：
 >
 > 1. **先向用户确认**其 AstrBot 实际版本（`Dashboard 设置 → 关于` 或 `astrbot --version`）。
-> 2. **新版（≥4.26.8）**：按 Skill 当前规则与示例写即可。
-> 3. **旧版**：以用户当前版本为准——`metadata.yaml` 的 `astrbot_version` 写成兼容范围（如 `">=4.16"`），**不要**使用旧版不支持的 API（如 dict 配置默认值、按插件日志级别、Cloud 市场发布等）。
+> 2. **新版（≥4.27.0）**：按 Skill 当前规则与示例写即可。
+> 3. **旧版**：以用户当前版本为准——`metadata.yaml` 的 `astrbot_version` 写成兼容范围（如 `">=4.16"`），**不要**使用旧版不支持的 API（如按插件日志级别、failed 清理、API Key 子权限等）。
 > 4. 版本不确定时，先问，不要默认假设新版。
 
 ---
@@ -250,7 +250,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 flowchart TD
     A[Step 0: 理解意图] --> B{确认插件名与作者}
     B -- 未确认 --> B
-    B -- 确认 --> C[确认 AstrBot 版本<br/>新版≥4.26.8 / 旧版按用户版本]
+    B -- 确认 --> C[确认 AstrBot 版本<br/>新版≥4.27.0 / 旧版按用户版本]
     C --> D[Step 0.5: 读官方必读文档<br/>plugin-new + simple + listen-message-event<br/>+ import 表 §1 + FIX-00/02 + 一个类型示例]
     D --> E[Step 1: 选择插件类型<br/>可选多类型组合]
     E --> F[Step 1.5: 按类型读官方文档]
@@ -304,7 +304,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 规则 | 说明 |
 |------|------|
 | 身份门禁 | 脚手架前必须确认插件名 `astrbot_plugin_*` 与作者，未确认不得创建目录 |
-| **版本确认** | 生成前先确认用户 AstrBot 版本（新版 ≥4.26.8 / 旧版按其版本写 `astrbot_version`），避免用不支持的新 API |
+| **版本确认** | 生成前先确认用户 AstrBot 版本（新版 ≥4.27.0 / 旧版按其版本写 `astrbot_version`），避免用不支持的新 API |
 | 官方文档优先 | 以 `star/plugin-new.md` + `star/guides/*` 为准；**禁止**旧 `plugin.md` 当权威 |
 | 两阶段审查 | 首次输出：Phase A 运行时全文校对；功能完成/用户审核：Phase B 全文准确·安全·完整 |
 | 高风险操作 | git commit/push/force、大规模改写已运行代码、批量删除 — 须用户明确允许 |
@@ -316,7 +316,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 卸载与 KV | ≥4.26.2 卸载会清理插件 KV |
 | 插件发布 | Cloud 市场 + ZIP ≤16MB；metadata 完整；打包排除与 MCP `zip_pack` 一致 |
 | 配置 schema dict | ≥4.26.8 核心映射 dict 默认值；仍避免可变默认共享陷阱 |
-| 插件日志级别 | ≥4.26.8 可按插件设置 DEBUG/INFO/… 或跟随全局 |
+| 插件日志级别 | ≥4.27.0 可按插件设置 DEBUG/INFO/… 或跟随全局 |
 | docstring | 所有 `@filter.command` 必须有 docstring |
 | 参数绑定 | 用 `event.message_str.strip()` 获取用户输入，不要用函数参数 |
 | command_group | 必须用函数模式 `def math(): pass`，不能用 class |
@@ -415,7 +415,7 @@ python3 mcp/scripts/error_kb.py --store mcp/.error_kb.json propose \
 
 ## 版本要求
 
-- **AstrBot**：skill 规则兼容 **≥4.16**；开发/联调建议 **≥4.26.8**（Cloud 市场、dict 配置默认值、按插件日志级别、本地上传挂起修复、Cron 持久任务加载等）。**生成插件前先确认用户实际版本。**
+- **AstrBot**：skill 规则兼容 **≥4.16**；开发/联调建议 **≥4.27.0**（按插件日志级别、failed 插件清理 API、API Key 子权限、Cloud 市场、dict 配置默认值等）。**生成插件前先确认用户实际版本。**（v4.27.2 为纯维护补丁，无 API 变化）
 - Python：工具链 **≥3.10**；官方文档侧倾向 **3.12**（推荐）
 - OpenAPI：浏览 [Scalar](https://docs.astrbot.app/scalar.html)；机器可读 [openapi.json](https://docs.astrbot.app/openapi.json)。本地可用 `mcp/scripts/check_openapi_drift.py` 与快照 diff（**已验证 4.26.8 与当前 145 paths 无路径漂移**；`PUT .../log-level` 已在核心源码但**尚未**进入公开 openapi.json）
 

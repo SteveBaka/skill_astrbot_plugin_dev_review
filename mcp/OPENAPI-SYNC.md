@@ -4,7 +4,7 @@
 |-------|--------|
 | Live URL | https://docs.astrbot.app/openapi.json |
 | UI | https://docs.astrbot.app/scalar.html |
-| Last skill sync | 2026-08-02 (AstrBot **v4.27.0** release; snapshot refreshed via `--update`) |
+| Last skill sync | 2026-08-05 (AstrBot **v4.27.0** snapshot; **v4.27.2** checked — 162 paths, no delta) |
 | Paths in snapshot | **162** (no path/method drift for runtime-used routes) |
 | `info.version` | `0.1.0` (pinned by upstream — **not** a core version marker) |
 | Snapshot file | `AstrBot OpenAPI v1.json` (gitignored local asset) |
@@ -20,6 +20,12 @@
   - `/api/v1/chat/projects/{project_id}/workspace/file*` — project workspace files (#9505)
 - **Removed**: `/api/v1/files/tokens/{id}` — not used by runtime.
 - **Scope metadata**: plugin config endpoints (`/api/v1/plugins/{id}/config*`) are scope **`plugin`** (not `config`); `config` covers config-profiles; `provider` covers providers; `chat` covers WebChat. See `mcp/SETUP.md` API Key scopes.
+
+## v4.27.2 check (2026-08-05)
+
+Pure maintenance/fix patch (#9525/#9539/#9532/…). Live spec verified: **162 paths
+identical to snapshot**, runtime-used routes + scopes unchanged → **no skill/MCP
+update required**.
 
 ## Runtime-used routes (18)
 

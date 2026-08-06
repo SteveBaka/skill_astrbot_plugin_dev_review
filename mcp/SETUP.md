@@ -418,6 +418,10 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
   (`plugin` scope, body `{"level": "DEBUG"|…|null}`) — **not yet listed** in
   public openapi.json; do not invent MCP tools against undocumented-only
   routes until the published spec includes them (or pin instance version).
+  **v4.27.0 (2026-08-02):** snapshot refreshed → 162 paths; `log-level` now public;
+  new `install/git`, `conversations*`, `sessions*`; removed `files/tokens/{id}`.
+  **v4.27.2 (2026-08-05):** pure maintenance/fix patch — live spec still 162 paths,
+  no API/scope changes; no skill update needed.
 - **Error-fingerprint KB → auto-fix-guide** (`mcp/runtime/error_fingerprint.py` + `mcp/scripts/error_kb.py`):
   captures **desensitized** error shapes (paths/UUID/token/plugin-id/line numbers
   stripped) during regression/smoke; proposes new `auto-fix-guide.md` FIX entries

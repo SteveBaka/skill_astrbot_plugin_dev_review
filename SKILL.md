@@ -406,7 +406,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - `_conf_schema.json` may include UTF-8 BOM (≥4.26.7); still prefer UTF-8 without BOM for editors <!-- Source: releases -->
 - Dict-type fields in `_conf_schema.json`: core maps defaults correctly (≥4.26.8 #9414) — still use explicit schema defaults; do not rely on accidental `{}` sharing <!-- Source: v4.26.8 -->
 - Marketplace publish: use [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI market syncs from Cloud); package **ZIP ≤ 16MB**; include clean tree (no `.git` / `__pycache__` / venv) — aligns with MCP `zip_pack` excludes <!-- Source: plugin-publish.md / v4.26.8 -->
-- Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (≥4.26.8 #9342). **Not** in published OpenAPI snapshot yet — call only when instance is ≥4.26.8 <!-- Source: v4.26.8 source -->
+- Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (source ≥4.26.8 #9342; **in public OpenAPI since 4.27.0**) <!-- Source: v4.26.8 source / 4.27.0 spec -->
 - Prefer official recommended Python **3.12** for development; skill minimum remains 3.10 for tooling <!-- Source: docs 4.26.2 -->
 
 ---
