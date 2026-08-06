@@ -210,6 +210,10 @@ def astrbot_plugin_reload(plugin_id: str, failed: bool = False) -> str:
                   (use when plugin is on the failed list)
 
     After reload, callers should check astrbot_plugin_failed.
+
+    NOTE: For Platform adapters, reload success does NOT replace the running
+    adapter instance. After updating adapter code, fully restart the AstrBot
+    process — the old Platform instance continues to run otherwise.
     """
     denied = _mutation_or_none("plugin_reload")
     if denied:

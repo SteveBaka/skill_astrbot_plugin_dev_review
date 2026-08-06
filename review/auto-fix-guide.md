@@ -704,6 +704,151 @@ literal `$` character; double-check `pwd` before any `rm -rf`; prefer `find
 
 ---
 
+### FIX-34: Adapter component field access — check components.py first
+
+**Problem**: `'At' object has no attribute 'uid'` (or similar `AttributeError` on
+message components at runtime). Adapter code accesses a field name that does not
+exist in the current AstrBot version's `astrbot/core/message/components.py`.
+
+**Why**: AstrBot's component classes (`At`, `Reply`, `Image`, …) are pydantic
+`BaseModel` subclasses. Field names change across versions (e.g. `qq` vs `uid`).
+Constructing a component with an unknown field name is silently ignored
+(pydantic discards extras); reading a non-existent field raises `AttributeError`.
+
+**Fix**:
+```python
+# ❌ uid may not exist in current version
+target = comp.uid
+
+# ✅ read priority: check known field names
+target = getattr(comp, "qq") or getattr(comp, "uid") or ""
+# ✅ construct with known field (qq is the canonical identifier)
+from astrbot.api.message_components import At
+at_comp = At(qq=user_id, name=user_name)
+```
+
+**Rules**:
+- Before accessing any component field, check the **current version's**
+  `astrbot/core/message/components.py` for field names.
+- `qq` is the canonical user-identifier field (OneBot semantics, works in
+  non-QQ platforms as the general user ID).
+- Do **not** try to add new fields to core components (pydantic `BaseModel`
+  rejects unknown fields via extra validation). Use read-priority + semantic
+  mapping instead.
+
+---
+
+### FIX-35: Adapter reply target — use get_session_id(), not get_sender_id()
+
+**Problem**: Group message replies are sent to the **sender** (private chat)
+instead of the **group conversation** (the whole group sees it as a private
+reply, or the reply goes to the wrong conversation).
+
+**Why**: `AstrMessageEvent.get_sender_id()` returns the message **author**.
+`get_session_id()` returns the **conversation/session** identifier. For group
+messages, the session id is the group id (e.g. `xxx@chatroom`); the sender id
+is the individual user.
+
+```python
+# ❌ sends to the user, not the group
+await self.client.send_text(self.get_sender_id(), comp.text)
+
+# ✅ sends to the group/session
+await self.client.send_text(self.get_session_id(), comp.text)
+```
+
+**Rule**: `send()` → `get_session_id()` (or `get_session_id() or get_sender_id()`
+for fallback). `get_sender_id()` is only for @-mentioning the user.
+
+---
+
+### FIX-36: Adapter wakeup — set self_id + At(qq==self_id)/AtAll
+
+**Problem**: `@bot 在做什么` cannot wake the bot. The message is delivered but
+the adapter never generates an `At` component, or `self_id` is unset.
+
+**Wakeup chain** (source: `astrbot/core/waking_check/stage.py`):
+1. `AstrBotMessage.self_id` **must be set** (the bot's own user ID) — otherwise
+   `get_self_id()` returns empty, and the `waking_check` cannot match the bot.
+2. The adapter must **generate `At` components** from the platform's at-user
+   list: if at_users contains `self_id` → insert `At(qq=self_id)` at the front
+   of the message component chain.
+3. `@all` or `@everyone` → generate `AtAll()`.
+
+```python
+# In convert_message():
+abm = AstrBotMessage(...)
+abm.self_id = data.get("self_id") or ""  # MUST set
+
+# At component generation:
+at_users = data.get("at_users") or []
+if at_users:
+    for uid in at_users:
+        if uid == abm.self_id:
+            chain.insert(0, At(qq=uid))
+        elif uid in ("all", "everyone", "notify@all"):
+            chain.insert(0, AtAll())
+```
+
+**Cross-platform @ detection**: do not rely solely on XML `atuserlist` —
+different platforms encode @ mentions differently (XML structured, plaintext
+with `@nickname`, etc.). Use a platform-specific check that:
+1. Checks structured at-user list (if available).
+2. Falls back to regex matching `@(wxid|nickname)` in the message content.
+3. Resolves group nicknames via the platform's API (with caching).
+
+---
+
+### FIX-37: Debug log variable reference order — UnboundLocalError
+
+**Problem**: Adding a temporary debug log crashes the handler with
+`cannot access local variable 'X' where it is not associated with a value`
+(UnboundLocalError), silently dropping all messages.
+
+**Why**: Python's scoping rule — if a variable is assigned **anywhere** in a
+function, it is treated as **local** throughout the entire function. If a log
+statement references it **before** the assignment, Python raises
+`UnboundLocalError` at runtime.
+
+```python
+# ❌ crashes: logger.info references 'text' before assignment
+async def _handle_message(self, data):
+    logger.info(f"msg={text}")        # UnboundLocalError!
+    text = data.get("content", "")
+    ...
+
+# ✅ fix: assign before any reference
+async def _handle_message(self, data):
+    text = data.get("content", "")
+    logger.info(f"msg={text}")        # ok
+    ...
+```
+
+**Rule**: before adding any temporary debug log, verify all referenced
+variables are assigned **before** the log line. Remove temporary logs after
+the debugging session.
+
+---
+
+### FIX-38: Hot-reload does NOT replace running Platform adapter instance
+
+**Problem**: After reloading a Platform adapter via `POST /plugins/{id}/reload`
+(or `astrbot_plugin_reload`), the **running adapter instance** continues to
+use the old code. The reload API returns success, but the Platform instance
+that was already `run()`-ing is not replaced — only new instances pick up
+updated code.
+
+**Fix**: After deploying adapter code changes, **fully restart the AstrBot
+process** (or container). Do not rely on `reload` for adapters — it works for
+regular Star plugins but not for Platform adapters whose instances are
+long-lived.
+
+**MCP note**: `astrbot_plugin_reload`'s `ok=true` does NOT guarantee the
+running adapter is using the new code. Check the log line numbers or behavior
+to confirm the restart actually happened.
+
+---
+
 ## Verification
 
 After each fix, re-run the full audit from `review/review-workflow.md`:

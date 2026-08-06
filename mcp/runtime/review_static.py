@@ -532,6 +532,11 @@ class _AdapterFileChecker(ast.NodeVisitor):
         self.star_classes: List[ast.ClassDef] = []
         self.has_register = "register_platform_adapter" in source
         self.top_level_modules: Set[str] = set()
+        # adapter behavioral markers (aggregated across files)
+        self.self_id_assigned = False
+        self.builds_astrbot_message = False
+        self.get_sender_id_in_send = False
+        self.uses_get_session_id = False
 
     def out(self, rule: str, sev: str, line: int, msg: str, hint: str = "") -> None:
         self.findings.append(Finding(rule, sev, self.rel, line, msg, hint))
@@ -690,7 +695,34 @@ class _AdapterFileChecker(ast.NodeVisitor):
     def run(self) -> "_AdapterFileChecker":
         self.visit(self.tree)
         # Per-file: Platform/register may live outside main.py (synochat pattern).
+        self._scan_adapter_behavior()
         return self
+
+    def _scan_adapter_behavior(self) -> None:
+        """Aggregate adapter behavioral markers for FIX-35/36 (walk full AST)."""
+        for node in ast.walk(self.tree):
+            # self_id assignment: any `X.self_id = ...`
+            if isinstance(node, ast.Attribute) and node.attr == "self_id":
+                if isinstance(node.ctx, ast.Store):
+                    self.self_id_assigned = True
+            # builds AstrBotMessage(...)
+            if isinstance(node, ast.Call):
+                fname = self._call_name(node.func)
+                if fname == "AstrBotMessage" or fname.endswith("AstrBotMessage"):
+                    self.builds_astrbot_message = True
+                # get_sender_id() inside a send-ish method
+                if fname == "get_sender_id":
+                    self.get_sender_id_in_send = True
+                if fname == "get_session_id":
+                    self.uses_get_session_id = True
+
+    @staticmethod
+    def _call_name(func: ast.AST) -> str:
+        if isinstance(func, ast.Name):
+            return func.id
+        if isinstance(func, ast.Attribute):
+            return func.attr
+        return ""
 
 
 def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
@@ -742,6 +774,10 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
     any_platform = False
     any_register = False
     any_star = False
+    any_self_id = False
+    any_builds_message = False
+    any_sender_in_send = False
+    any_uses_session = False
     py_files = sorted(
         p
         for p in root.rglob("*.py")
@@ -775,6 +811,14 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
             any_register = True
         if checker.star_classes:
             any_star = True
+        if checker.self_id_assigned:
+            any_self_id = True
+        if checker.builds_astrbot_message:
+            any_builds_message = True
+        if checker.get_sender_id_in_send:
+            any_sender_in_send = True
+        if checker.uses_get_session_id:
+            any_uses_session = True
         report.files_checked += 1
 
     if not any_platform:
@@ -811,6 +855,38 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
                 "AND add a Star entry class (class XxxPlugin(Star) with "
                 "super().__init__(context)) so star_manager loads the plugin. "
                 "Missing it raises '未通过 Star 注册'.",
+            )
+        )
+
+    # ── FIX-35: reply target should be session id, not sender ──
+    # Only warn when get_sender_id() is used WITHOUT get_session_id() fallback.
+    if any_sender_in_send and not any_uses_session:
+        report.add(
+            Finding(
+                "FIX-35",
+                "warning",
+                "main.py",
+                0,
+                "get_sender_id() used in send path — group replies may go to the "
+                "sender instead of the conversation",
+                "Use get_session_id() (or get_session_id() or get_sender_id()) for "
+                "the reply target in send()/send_by_session(). get_sender_id() is "
+                "only for @-mentioning the user.",
+            )
+        )
+
+    # ── FIX-36: self_id must be set for wakeup ─────────────────
+    if any_builds_message and not any_self_id:
+        report.add(
+            Finding(
+                "FIX-36",
+                "warning",
+                "main.py",
+                0,
+                "adapter builds AstrBotMessage but never sets abm.self_id",
+                "waking_check needs self_id to match @bot mentions. Set "
+                "abm.self_id = <bot user id> in convert_message(); generate "
+                "At(qq=self_id)/AtAll() for at_users so the bot wakes on @.",
             )
         )
 

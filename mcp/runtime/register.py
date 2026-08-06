@@ -142,6 +142,10 @@ def register_runtime_tools(mcp: Any) -> None:
         failed=false: normal reload. failed=true: reload via failed-plugins endpoint.
         On success, includes post_reload_failed_probe snapshot.
         Needs ASTRBOT_ALLOW_MUTATIONS=true.
+
+        NOTE for Platform adapters: reload success does NOT replace the running
+        adapter instance. After updating adapter code, fully restart the AstrBot
+        process — otherwise the old Platform instance continues to run.
         """
         return tools_manage.astrbot_plugin_reload(plugin_id=plugin_id, failed=failed)
 

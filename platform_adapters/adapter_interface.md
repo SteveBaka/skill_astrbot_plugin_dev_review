@@ -125,7 +125,9 @@ class MyPlatformEvent(AstrMessageEvent):
     async def send(self, message: MessageChain):
         for comp in message.chain:
             if isinstance(comp, Plain):
-                await self.client.send_text(self.get_sender_id(), comp.text)
+                # Use get_session_id() for group reply target.
+                # get_sender_id() returns the author, not the conversation.
+                await self.client.send_text(self.get_session_id(), comp.text)
         await super().send(message)
 ```
 
@@ -135,6 +137,11 @@ class MyPlatformEvent(AstrMessageEvent):
 - `convert_message()` must correctly set `session_id`, which determines LLM context isolation
 - `commit_event()` submits events to the queue; do not omit it
 - Event classes must implement the `send()` method, and call `await super().send(message)` at the end
+- **Reply target**: use `get_session_id()` (or `get_session_id() or get_sender_id()`) for the conversation target; `get_sender_id()` is only for @-mentioning the user (FIX-35)
+- **Wakeup chain**: always set `abm.self_id` in `convert_message()`; generate `At(qq=self_id)` / `AtAll()` from the platform's `at_users` list so the bot wakes on @mention (FIX-36)
+- **Component fields**: check `astrbot/core/message/components.py` before accessing fields — `qq` is the canonical user-ID field (not `uid`); do not try to add custom fields to core components (pydantic BaseModel rejects unknown fields) (FIX-34)
+- **Cross-platform @ detection**: do not rely solely on XML `atuserlist` — different platforms encode @ mentions differently (XML structured, plaintext `@nickname`, etc.). Use platform-specific checks with fallback regex (FIX-36)
+- **Hot-reload limit**: `POST /plugins/{id}/reload` does NOT replace the running Platform instance; after changing adapter code, fully restart the AstrBot process (FIX-38)
 
 ## Config: follow official `register_platform_adapter`
 

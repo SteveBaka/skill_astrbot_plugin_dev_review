@@ -309,6 +309,130 @@ class TestEntryGates:
         assert not report.ok and "main.py" in report.error
 
 
+class TestAdapterBehavioralChecks:
+    def _adapter(self, tmp_path, main_src: str, name="astrbot_plugin_adap"):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "metadata.yaml").write_text(
+            f"name: {name}\ndesc: x\nversion: 0.1.0\nauthor: t\n",
+            encoding="utf-8",
+        )
+        (d / "requirements.txt").write_text("#\n", encoding="utf-8")
+        (d / "main.py").write_text(main_src, encoding="utf-8")
+        return d
+
+    def test_fix35_get_sender_id_warns(self, tmp_path):
+        src = '''import asyncio
+from astrbot.api.platform import Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
+from astrbot.core.platform.register import register_platform_adapter
+from astrbot.api.event import MessageChain
+
+@register_platform_adapter("x", "x")
+class X(Platform):
+    def meta(self):
+        return PlatformMetadata(name="x", desc="x", id="x")
+    async def run(self):
+        await asyncio.sleep(1)
+    async def send_by_session(self, session, message_chain: MessageChain):
+        pass
+
+class XPlugin(Star):
+    def __init__(self, context: Context):
+        super().__init__(context)
+
+async def send(msg):
+    await client.send_text(self.get_sender_id(), msg)  # no get_session_id
+'''
+        report = review_adapter_directory(self._adapter(tmp_path, src))
+        rules = [f.rule for f in report.findings]
+        assert "FIX-35" in rules
+        assert report.ok
+
+    def test_fix35_session_fallback_no_warning(self, tmp_path):
+        src = '''import asyncio
+from astrbot.api.platform import Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
+from astrbot.core.platform.register import register_platform_adapter
+from astrbot.api.event import MessageChain
+
+@register_platform_adapter("x", "x")
+class X(Platform):
+    def meta(self):
+        return PlatformMetadata(name="x", desc="x", id="x")
+    async def run(self):
+        await asyncio.sleep(1)
+    async def send_by_session(self, session, message_chain: MessageChain):
+        pass
+
+class XPlugin(Star):
+    def __init__(self, context: Context):
+        super().__init__(context)
+
+async def send(msg):
+    sid = self.get_session_id() or self.get_sender_id()
+    await client.send_text(sid, msg)
+'''
+        report = review_adapter_directory(self._adapter(tmp_path, src))
+        assert "FIX-35" not in [f.rule for f in report.findings]
+
+    def test_self_id_set_clears_fix36(self, tmp_path):
+        src = '''import asyncio
+from astrbot.api.platform import AstrBotMessage, Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
+from astrbot.core.platform.register import register_platform_adapter
+from astrbot.api.event import MessageChain
+
+@register_platform_adapter("x", "x")
+class X(Platform):
+    def meta(self):
+        return PlatformMetadata(name="x", desc="x", id="x")
+    async def run(self):
+        await asyncio.sleep(1)
+    async def send_by_session(self, session, message_chain: MessageChain):
+        pass
+
+class XPlugin(Star):
+    def __init__(self, context: Context):
+        super().__init__(context)
+
+def convert():
+    abm = AstrBotMessage(...)
+    abm.self_id = "wxid_xxx"
+'''
+        report = review_adapter_directory(self._adapter(tmp_path, src))
+        rules = [f.rule for f in report.findings]
+        assert "FIX-36" not in rules
+
+    def test_self_id_missing_warns(self, tmp_path):
+        src = '''import asyncio
+from astrbot.api.platform import AstrBotMessage, Platform, PlatformMetadata
+from astrbot.api.star import Context, Star
+from astrbot.core.platform.register import register_platform_adapter
+from astrbot.api.event import MessageChain
+
+@register_platform_adapter("x", "x")
+class X(Platform):
+    def meta(self):
+        return PlatformMetadata(name="x", desc="x", id="x")
+    async def run(self):
+        await asyncio.sleep(1)
+    async def send_by_session(self, session, message_chain: MessageChain):
+        pass
+
+class XPlugin(Star):
+    def __init__(self, context: Context):
+        super().__init__(context)
+
+def convert():
+    abm = AstrBotMessage(...)
+    # no self_id set
+'''
+        report = review_adapter_directory(self._adapter(tmp_path, src))
+        rules = [f.rule for f in report.findings]
+        assert "FIX-36" in rules
+
+
 class TestAdapterFix32Collision:
     def _adapter(self, tmp_path, tmpl_keys):
         d = tmp_path / "astrbot_plugin_col"
