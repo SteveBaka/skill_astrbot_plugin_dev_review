@@ -30,6 +30,11 @@ await cron_mgr.add_basic_job(
 | `handler_params` | dict | Extra parameters (v4.22.2) |
 | `enabled` | bool | Whether enabled (v4.22.2) |
 
+> **Timezone (v4.27.3+ #9579/#9581)**: cron jobs inherit AstrBot's configured
+> timezone (Dashboard → 设置 shows the effective AstrBot time). No per-job
+> timezone param needed — the cron expression is evaluated in the system/AstrBot
+> timezone.
+
 ## Register AI Wake-up (Active Agent Job)
 
 ```python

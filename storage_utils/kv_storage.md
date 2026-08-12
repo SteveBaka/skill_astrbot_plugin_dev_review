@@ -18,6 +18,11 @@ await self.delete_kv_data(key: str)                 # Delete
 - **Persistence**: Automatically persisted to `data/metadata/kv_storage.db`
 - **Async**: All interfaces are async methods
 
+> **v4.27.3+ (#9582/#9584/#9649)**: the legacy **synchronous `SharedPreferences`**
+> methods were migrated to async, non-blocking paths (removed as sync). Always use
+> the Star-level async KV API below — `await self.put_kv_data / get_kv_data /
+> delete_kv_data` — never the old sync SharedPreferences calls.
+
 ## Lifecycle (≥ v4.26.2)
 
 - **On plugin uninstall**, AstrBot **clears this plugin's KV data** (framework behavior).

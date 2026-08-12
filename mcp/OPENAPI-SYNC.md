@@ -4,7 +4,7 @@
 |-------|--------|
 | Live URL | https://docs.astrbot.app/openapi.json |
 | UI | https://docs.astrbot.app/scalar.html |
-| Last skill sync | 2026-08-05 (AstrBot **v4.27.0** snapshot; **v4.27.2** checked — 162 paths, no delta) |
+| Last skill sync | 2026-08-13 (AstrBot **v4.27.0** snapshot; **v4.27.2 / v4.27.3** checked — 162 paths, no delta) |
 | Paths in snapshot | **162** (no path/method drift for runtime-used routes) |
 | `info.version` | `0.1.0` (pinned by upstream — **not** a core version marker) |
 | Snapshot file | `AstrBot OpenAPI v1.json` (gitignored local asset) |
@@ -27,6 +27,14 @@ Pure maintenance/fix patch (#9525/#9539/#9532/…). Live spec verified: **162 pa
 identical to snapshot**, runtime-used routes + scopes unchanged → **no skill/MCP
 update required**.
 
-## Runtime-used routes (18)
+## v4.27.3 check (2026-08-13)
+
+Feature/performance patch (async SharedPreferences #9582/#9584/#9649, cron
+timezone #9579/#9581, plugin config default reset #9599, MCP tool-name sanitize
+#9534, empty-config-schema #9619, …). Live spec verified: **162 paths identical
+to snapshot**, runtime-used routes + scopes unchanged → **no MCP/OpenAPI update
+required**. Doc-only notes added: KV storage async API reaffirmed, cron timezone.
+
+## Runtime-used routes (20)
 
 All present in the 162-path contract (chat / plugins / config-profiles / providers). See `check_openapi_drift.py` extraction from `mcp/runtime/*.py`.
