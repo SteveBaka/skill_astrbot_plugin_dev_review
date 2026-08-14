@@ -157,6 +157,13 @@ Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / 
 | `ASTRBOT_ERROR_KB` | no | error-fingerprint store path (gitignored); install/smoke failures auto-record desensitized fingerprints |
 | `ASTRBOT_DEV_WORKSPACE` | no | scaffold staging dir (default `~/.astrbot_skill_workspace`; never cwd) |
 
+> **Env-gate vs key-scope**: `allow_chat_probe` / `chat_username_configured` in
+> `runtime_info` are **MCP-host env gates**, not API-key scope indicators. A key
+> lacking chat scope surfaces as `auth`/`chat_api_error` (403) in tool output.
+> **`no_content` / `empty_response`** (SSE OK but zero output, even a plain LLM
+> message) means the WebChat profile's **provider is not configured** — fix the
+> provider in Dashboard, not the API key.
+
 ### API Key scopes (AstrBot ≥4.27.0, #9503)
 
 AstrBot API keys use **scope** permissions (`Dashboard → 设置 → API Key → scopes`).
@@ -401,6 +408,11 @@ Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-s
 
 ## 3.2 Maintenance (dev)
 
+- **Docs index (`mcp/docs_index.json`)**: precomputed so the MCP server loads doc
+  metadata in milliseconds. **Regenerate after adding/renaming skill `.md` files**:
+  `cd mcp && .venv/bin/python3 -c "import json,sys; sys.path.insert(0,'.'); from server import discover_docs, SKILL_ROOT; json.dump(discover_docs(SKILL_ROOT), open('docs_index.json','w'), ensure_ascii=False, indent=2)"`
+  (Server falls back to a live scan if the json is missing — but that scan takes
+  ~30s on cloud-synced volumes and must not run inside the MCP request window.)
 - **Unit tests** (`mcp/tests/`, no AstrBot needed; env auto-cleared):
   `.venv/bin/pytest tests/` — covers zip_pack exclusions/naming, config gates,
   chat SSE/session policy, client auth/errors. Fixture plugin:

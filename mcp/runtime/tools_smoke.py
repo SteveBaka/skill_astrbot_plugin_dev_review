@@ -503,6 +503,7 @@ def astrbot_smoke_suite(
     platform_fails = sum(1 for r in results if r["verdict"] == "platform_error")
     handler_fails = sum(1 for r in results if r["verdict"] == "handler_error")
     mismatch = sum(1 for r in results if r["verdict"] == "content_mismatch")
+    no_content = sum(1 for r in results if r["verdict"] == "no_content")
     out["results"] = results
     out["summary"] = {
         "total": len(results),
@@ -511,6 +512,7 @@ def astrbot_smoke_suite(
         "platform_or_llm_failures": platform_fails,
         "handler_errors": handler_fails,
         "content_mismatches": mismatch,
+        "no_content": no_content,
         "plugin_crashed_during_run": crashed,
         "elapsed_ms": round((time.time() - t0) * 1000.0, 2),
     }
@@ -535,6 +537,20 @@ def astrbot_smoke_suite(
             out["next_step"] = (
                 f"Handler exceptions in cases {fails} — fix plugin code "
                 f"(see plain text / auto-fix-guide), reinstall, rerun."
+            )
+        elif no_content and no_content == len(results) - passed:
+            # All failing cases returned NO output (even a pure LLM message).
+            # This is NOT an API-key/auth problem (that would surface as
+            # platform_error / 403). It means the WebChat profile's provider is
+            # not configured/valid, so nothing produces a reply.
+            out["error_kind"] = "no_content_all"
+            out["next_step"] = (
+                f"All failing cases ({fails}) returned no output at all — even a "
+                f"plain LLM message. This is NOT an API-key/scope problem (auth "
+                f"issues show as platform_error/403). It means the WebChat config "
+                f"profile (plugin_dev_skill) has no valid provider configured, so "
+                f"nothing replies. Fix the provider in Dashboard, or rebuild the "
+                f"profile with astrbot_ensure_plugin_dev_skill (pick a provider_id)."
             )
         elif mismatch:
             out["error_kind"] = "content_mismatch"

@@ -12,6 +12,7 @@ Usage:
     MCP_TRANSPORT=sse MCP_PORT=3000 python mcp/server.py
 """
 
+import json
 import os
 import sys
 from typing import Dict, List
@@ -82,9 +83,40 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
     return index
 
 
-DOCS_INDEX = discover_docs(SKILL_ROOT)
-ALL_CATEGORIES = sorted(DOCS_INDEX.keys())
-TOTAL_DOCS = sum(len(v) for v in DOCS_INDEX.values())
+# Docs index: prefer the PRECOMPUTED mcp/docs_index.json (millisecond load).
+# Scanning + reading every .md takes ~30s on some volumes (SynologyDrive) and
+# must NEVER run inside the MCP client's request window (30s timeout). Fall back
+# to a live scan only if the json is missing (then cache in memory).
+_DOCS_INDEX_JSON = os.path.join(SCRIPT_DIR, "docs_index.json")
+_docs_cache: Dict[str, Dict[str, str]] | None = None
+
+
+def _load_docs_index() -> Dict[str, Dict[str, str]]:
+    try:
+        with open(_DOCS_INDEX_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    # fallback: live scan (slow on network/cloud volumes) — happens only when the
+    # precomputed index is absent.
+    return discover_docs(SKILL_ROOT)
+
+
+def _get_docs_index() -> Dict[str, Dict[str, str]]:
+    global _docs_cache
+    if _docs_cache is None:
+        _docs_cache = _load_docs_index()
+    return _docs_cache
+
+
+def _get_categories() -> list:
+    return sorted(_get_docs_index().keys())
+
+
+def _get_total_docs() -> int:
+    return sum(len(v) for v in _get_docs_index().values())
 
 # Import reference: single source mcp/runtime/contracts.py (checklist §1 + FIX-00)
 def _load_import_table():
@@ -136,7 +168,7 @@ def get_skill_info() -> str:
     lines = [
         "# AstrBot Skill Overview",
         "",
-        f"**Categories**: {len(ALL_CATEGORIES)} | **Documents**: {TOTAL_DOCS} | **Root**: `{SKILL_ROOT}`",
+        f"**Categories**: {len(_get_categories())} | **Documents**: {_get_total_docs()} | **Root**: `{SKILL_ROOT}`",
         "",
         "## Quick Start",
         "",
@@ -154,8 +186,8 @@ def get_skill_info() -> str:
         "## Categories",
         "",
     ]
-    for cat in ALL_CATEGORIES:
-        count = len(DOCS_INDEX[cat])
+    for cat in _get_categories():
+        count = len(_get_docs_index()[cat])
         lines.append(f"- **{cat}** ({count} docs)")
     lines.append("")
     lines.append("Use `list_docs` to see all documents, `get_doc` to read one, `search_docs` to search.")
@@ -166,17 +198,17 @@ def get_skill_info() -> str:
 def list_docs(category: str = "") -> str:
     """List all available document categories and their documents. Pass a category name to filter."""
     if category:
-        if category not in DOCS_INDEX:
-            return f"Unknown category: {category}. Available: {', '.join(ALL_CATEGORIES)}"
+        if category not in _get_docs_index():
+            return f"Unknown category: {category}. Available: {', '.join(_get_categories())}"
         lines = [f"## {category}\n"]
-        for doc_id, desc in DOCS_INDEX[category].items():
+        for doc_id, desc in _get_docs_index()[category].items():
             lines.append(f"- `{doc_id}`: {desc}")
         return "\n".join(lines)
     else:
-        lines = [f"# AstrBot Skill Docs ({len(ALL_CATEGORIES)} categories, {TOTAL_DOCS} docs)\n"]
-        for c in ALL_CATEGORIES:
+        lines = [f"# AstrBot Skill Docs ({len(_get_categories())} categories, {_get_total_docs()} docs)\n"]
+        for c in _get_categories():
             lines.append(f"## {c}")
-            for doc_id, desc in DOCS_INDEX[c].items():
+            for doc_id, desc in _get_docs_index()[c].items():
                 lines.append(f"- `{doc_id}`: {desc}")
             lines.append("")
         return "\n".join(lines)
@@ -187,7 +219,7 @@ def get_doc(category: str, doc_name: str) -> str:
     """Fetch a specific document by category and name. Use list_docs to discover available categories and documents."""
     fpath = _resolve_path(category, doc_name)
     if not os.path.exists(fpath):
-        avail = ", ".join(DOCS_INDEX.get(category, {}).keys()) if category in DOCS_INDEX else "N/A"
+        avail = ", ".join(_get_docs_index().get(category, {}).keys()) if category in _get_docs_index() else "N/A"
         return f"Not found: {category}/{doc_name}.md\nAvailable in '{category}': {avail}"
     with open(fpath, "r", encoding="utf-8") as f:
         return f.read()
@@ -198,7 +230,7 @@ def search_docs(query: str) -> str:
     """Search all documents for a keyword and return matching context with surrounding lines."""
     q = query.lower()
     results: List[str] = []
-    for cat in ALL_CATEGORIES:
+    for cat in _get_categories():
         cat_path = SKILL_ROOT if cat == "__root__" else os.path.join(SKILL_ROOT, cat)
         if not os.path.isdir(cat_path):
             continue

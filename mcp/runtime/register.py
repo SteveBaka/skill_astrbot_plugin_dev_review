@@ -17,20 +17,38 @@ Phases registered here:
 
 from __future__ import annotations
 
+import importlib
 import json
 from typing import Any
 
-from . import (
-    review_static,
-    scaffold_plugin,
-    tools_chat,
-    tools_impl,
-    tools_install,
-    tools_lifecycle,
-    tools_manage,
-    tools_profile,
-    tools_smoke,
-)
+# Lazily imported on first tool call. Eager `from . import tools_*` at import time
+# pulls ~15 modules and is slow on cloud-synced filesystems (SynologyDrive cold
+# start), which can blow the MCP client's connect timeout (30s). Deferring keeps
+# server startup sub-second.
+_RUNTIME_SUBMODULES = {
+    "review_static",
+    "scaffold_plugin",
+    "tools_chat",
+    "tools_impl",
+    "tools_install",
+    "tools_lifecycle",
+    "tools_manage",
+    "tools_profile",
+    "tools_smoke",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name in _RUNTIME_SUBMODULES:
+        module = importlib.import_module(f".{name}", __package__)
+        globals()[name] = module  # cache after first import
+        return module
+    raise AttributeError(name)
+
+
+def _m(name: str) -> Any:
+    """Lazy-import a runtime submodule on first use (cold-start friendly)."""
+    return importlib.import_module(f".{name}", __package__)
 
 
 def register_runtime_tools(mcp: Any) -> None:
@@ -50,7 +68,7 @@ def register_runtime_tools(mcp: Any) -> None:
         Use first when debugging LAN connectivity. Set ASTRBOT_BASE_URL on MCP host.
         Docs tools work even if this reports not_configured / connect failed.
         """
-        return tools_impl.astrbot_runtime_info(probe=probe)
+        return _m("tools_impl").astrbot_runtime_info(probe=probe)
 
     @mcp.tool()
     def astrbot_plugin_list(
@@ -68,7 +86,7 @@ def register_runtime_tools(mcp: Any) -> None:
             en = True
         elif raw in ("0", "false", "no", "off"):
             en = False
-        return tools_impl.astrbot_plugin_list(include_reserved=include_reserved, enabled=en)
+        return _m("tools_impl").astrbot_plugin_list(include_reserved=include_reserved, enabled=en)
 
     @mcp.tool()
     def astrbot_plugin_failed() -> str:
@@ -77,7 +95,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         Primary signal after install/reload when a plugin crashes on load.
         """
-        return tools_impl.astrbot_plugin_failed()
+        return _m("tools_impl").astrbot_plugin_failed()
 
     @mcp.tool()
     def astrbot_plugin_get(plugin_id: str) -> str:
@@ -86,7 +104,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         plugin_id: installed plugin id/name as reported by astrbot_plugin_list.
         """
-        return tools_impl.astrbot_plugin_get(plugin_id=plugin_id)
+        return _m("tools_impl").astrbot_plugin_get(plugin_id=plugin_id)
 
     # ── P1 manage ──────────────────────────────────────────────
 
@@ -104,14 +122,14 @@ def register_runtime_tools(mcp: Any) -> None:
         Prefer: user names keys → config_get(redact=false) → edit → config_set
         → do not retain raw payload in agent memory longer than needed.
         """
-        return tools_manage.astrbot_plugin_config_get(plugin_id=plugin_id, redact=redact)
+        return _m("tools_manage").astrbot_plugin_config_get(plugin_id=plugin_id, redact=redact)
 
     @mcp.tool()
     def astrbot_plugin_config_schema(plugin_id: str) -> str:
         """
         [RUNTIME P1] Get plugin config schema (GET .../config/schema). Read-only.
         """
-        return tools_manage.astrbot_plugin_config_schema(plugin_id=plugin_id)
+        return _m("tools_manage").astrbot_plugin_config_schema(plugin_id=plugin_id)
 
     @mcp.tool()
     def astrbot_plugin_config_set(plugin_id: str, config_json: str) -> str:
@@ -121,7 +139,7 @@ def register_runtime_tools(mcp: Any) -> None:
         config_json: full JSON object string. Prefer config_get(redact=false) then edit.
         Needs ASTRBOT_ALLOW_MUTATIONS=true.
         """
-        return tools_manage.astrbot_plugin_config_set(
+        return _m("tools_manage").astrbot_plugin_config_set(
             plugin_id=plugin_id, config_json=config_json
         )
 
@@ -132,7 +150,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         Needs ASTRBOT_ALLOW_MUTATIONS=true.
         """
-        return tools_manage.astrbot_plugin_set_enabled(plugin_id=plugin_id, enabled=enabled)
+        return _m("tools_manage").astrbot_plugin_set_enabled(plugin_id=plugin_id, enabled=enabled)
 
     @mcp.tool()
     def astrbot_plugin_reload(plugin_id: str, failed: bool = False) -> str:
@@ -147,7 +165,7 @@ def register_runtime_tools(mcp: Any) -> None:
         adapter instance. After updating adapter code, fully restart the AstrBot
         process — otherwise the old Platform instance continues to run.
         """
-        return tools_manage.astrbot_plugin_reload(plugin_id=plugin_id, failed=failed)
+        return _m("tools_manage").astrbot_plugin_reload(plugin_id=plugin_id, failed=failed)
 
     # ── P1 per-plugin log level (v4.27.0 public API) ───────────
 
@@ -159,7 +177,7 @@ def register_runtime_tools(mcp: Any) -> None:
         Returns only {plugin_id, log_level}; log_level null = follow global.
         Does NOT dump the full config (may contain secrets). Needs `plugin` scope.
         """
-        return tools_manage.astrbot_plugin_log_level_get(plugin_id=plugin_id)
+        return _m("tools_manage").astrbot_plugin_log_level_get(plugin_id=plugin_id)
 
     @mcp.tool()
     def astrbot_plugin_log_level_set(
@@ -173,7 +191,7 @@ def register_runtime_tools(mcp: Any) -> None:
         Privacy: DEBUG raises verbosity and may record user message content —
         reset to follow-global (empty level) after debugging.
         """
-        return tools_manage.astrbot_plugin_log_level_set(
+        return _m("tools_manage").astrbot_plugin_log_level_set(
             plugin_id=plugin_id, level=level, confirm=confirm
         )
 
@@ -202,7 +220,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         Needs ASTRBOT_ALLOW_MUTATIONS=true.
         """
-        return tools_lifecycle.astrbot_plugin_uninstall(
+        return _m("tools_lifecycle").astrbot_plugin_uninstall(
             plugin_id=plugin_id,
             confirm_uninstall=confirm_uninstall,
             keep_config=keep_config,
@@ -221,7 +239,7 @@ def register_runtime_tools(mcp: Any) -> None:
         Uses .gitignore + hard excludes (venv/__pycache__/.git/...).
         Does not require ASTRBOT_ALLOW_MUTATIONS. Use before install_path.
         """
-        return tools_install.astrbot_plugin_pack_preview(path=path)
+        return _m("tools_install").astrbot_plugin_pack_preview(path=path)
 
     @mcp.tool()
     def astrbot_plugin_install_path(
@@ -249,7 +267,7 @@ def register_runtime_tools(mcp: Any) -> None:
         Needs ASTRBOT_ALLOW_MUTATIONS=true. Prefer testing on user-approved sandbox
         plugins (e.g. astrbot_plugin_mimo_tts) only.
         """
-        return tools_install.astrbot_plugin_install_path(
+        return _m("tools_install").astrbot_plugin_install_path(
             path=path,
             enable=enable,
             reload=reload,
@@ -278,7 +296,7 @@ def register_runtime_tools(mcp: Any) -> None:
         record first, then re-install. Needs mutations + confirm. Config/data are
         kept by default; deletes need explicit keep_*=false + confirm_delete_*.
         """
-        return tools_lifecycle.astrbot_plugin_failed_remove(
+        return _m("tools_lifecycle").astrbot_plugin_failed_remove(
             plugin_id=plugin_id,
             confirm=confirm,
             keep_config=keep_config,
@@ -294,7 +312,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         No secrets. Use before astrbot_ensure_plugin_dev_skill.
         """
-        return tools_profile.astrbot_providers_brief()
+        return _m("tools_profile").astrbot_providers_brief()
 
     @mcp.tool()
     def astrbot_config_profiles_brief() -> str:
@@ -303,7 +321,7 @@ def register_runtime_tools(mcp: Any) -> None:
 
         Check whether plugin_dev_skill already exists before create.
         """
-        return tools_profile.astrbot_config_profiles_brief()
+        return _m("tools_profile").astrbot_config_profiles_brief()
 
     @mcp.tool()
     def astrbot_post_install_hints(plugin_id: str, plugin_type: str = "") -> str:
@@ -313,7 +331,7 @@ def register_runtime_tools(mcp: Any) -> None:
         plugin_type: command|llm_tool|session|cron|hook|web|adapter|auto
         Reminds user to use WebChat with profile plugin_dev_skill.
         """
-        return tools_profile.astrbot_post_install_hints(
+        return _m("tools_profile").astrbot_post_install_hints(
             plugin_id=plugin_id, plugin_type=plugin_type
         )
 
@@ -339,7 +357,7 @@ def register_runtime_tools(mcp: Any) -> None:
         After success: tell user to select plugin_dev_skill in Dashboard WebChat.
         Does NOT send WebChat messages (smoke is separate opt-in; not implemented here).
         """
-        return tools_profile.astrbot_ensure_plugin_dev_skill(
+        return _m("tools_profile").astrbot_ensure_plugin_dev_skill(
             plugin_id=plugin_id,
             provider_id=provider_id,
             confirm_create=confirm_create,
@@ -363,7 +381,7 @@ def register_runtime_tools(mcp: Any) -> None:
         username: WebChat creator (or ASTRBOT_CHAT_USERNAME). Message bodies not returned;
         GET by id may still be Permission denied — use astrbot_chat_probe for smoke text.
         """
-        return tools_chat.astrbot_chat_sessions_brief(
+        return _m("tools_chat").astrbot_chat_sessions_brief(
             username=username, page=page, page_size=page_size
         )
 
@@ -395,8 +413,14 @@ def register_runtime_tools(mcp: Any) -> None:
         unsure which command the plugin supports, use "/plugin_help" as a minimal
         discovery probe FIRST, then probe the plugin's real commands. Never hardcode
         mimo_tts-specific commands like "/ttsinfo" for other plugins.
+
+        RESULT READING: `error_kind=chat_api_error`/`auth` means the API key lacks
+        the chat scope (403). `error_kind=empty_response` or verdict `no_content`
+        (SSE stream OK but zero output, even for plain LLM text) means the WebChat
+        config profile's provider is not configured/valid — that is NOT a key/scope
+        problem; fix the profile provider instead.
         """
-        return tools_chat.astrbot_chat_probe(
+        return _m("tools_chat").astrbot_chat_probe(
             message=message,
             confirm_probe=confirm_probe,
             username=username,
@@ -433,7 +457,7 @@ def register_runtime_tools(mcp: Any) -> None:
         first show the user the list via astrbot_chat_sessions_brief and get
         explicit OK. Hard cap max_delete per call (default 50).
         """
-        return tools_chat.astrbot_chat_sessions_cleanup(
+        return _m("tools_chat").astrbot_chat_sessions_cleanup(
             session_ids=session_ids,
             username=username,
             all_for_username=all_for_username,
@@ -479,7 +503,7 @@ def register_runtime_tools(mcp: Any) -> None:
         `_conf_schema.json` here or astrbot_plugin_config_set will 400
         "没有注册配置".
         """
-        return scaffold_plugin.astrbot_scaffold_plugin(
+        return _m("scaffold_plugin").astrbot_scaffold_plugin(
             name=name,
             author=author,
             plugin_type=plugin_type,
@@ -502,7 +526,7 @@ def register_runtime_tools(mcp: Any) -> None:
         profile=adapter: Platform subclass required methods + FIX-06 reserved attrs.
         No AstrBot instance needed. errors block install; judgment stays Phase A/B.
         """
-        report = review_static.review_path(path, profile=profile)
+        report = _m("review_static").review_path(path, profile=profile)
         return json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
 
     # ── P3+ smoke suite (composite) ────────────────────────────
@@ -533,7 +557,7 @@ def register_runtime_tools(mcp: Any) -> None:
         include_admin=true; hard cap max_cases (default 8).
         extra_messages: optional '||'-separated custom case messages.
         """
-        return tools_smoke.astrbot_smoke_suite(
+        return _m("tools_smoke").astrbot_smoke_suite(
             plugin_id,
             confirm=confirm,
             username=username,

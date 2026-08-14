@@ -176,3 +176,54 @@ class TestSuiteGates:
         monkeypatch.setenv("ASTRBOT_ALLOW_CHAT_PROBE", "true")
         r = json.loads(astrbot_smoke_suite("astrbot_plugin_x"))
         assert r.get("error_kind") != "confirm_required"
+
+
+class TestNoContentAll:
+    def test_all_no_content_hints_provider(self, monkeypatch):
+        """Pure LLM message returns nothing → no_content_all (provider issue, not key)."""
+        monkeypatch.setenv("ASTRBOT_ALLOW_CHAT_PROBE", "true")
+
+        class _R:
+            def __init__(self, data=None, ok=True, error=None, error_kind=None):
+                self.data = data
+                self.ok = ok
+                self.error = error
+                self.error_kind = error_kind
+
+        class _FakeClient:
+            def get(self, path, **kw):
+                if "failed" in path:
+                    return _R(data={"status": "ok", "data": {}})
+                return _R(data={
+                    "status": "ok",
+                    "data": {
+                        "name": "astrbot_plugin_x",
+                        "version": "0.1.0",
+                        "activated": True,
+                        "components": [
+                            {"type": "command", "command": "hi", "name": "hi",
+                             "description": "x", "has_admin": False}
+                        ],
+                    },
+                })
+
+        monkeypatch.setattr("runtime.tools_smoke.AstrBotClient", lambda: _FakeClient())
+
+        def fake_probe(message, **kw):
+            # empty SSE: ok but zero output (no plain, no error event)
+            return json.dumps({
+                "ok": False,
+                "elapsed_ms": 10,
+                "summary": {"plain_texts": [], "records": [], "attachments": [],
+                            "errors": []},
+            })
+
+        monkeypatch.setattr("runtime.tools_smoke.astrbot_chat_probe", fake_probe)
+        r = json.loads(astrbot_smoke_suite(
+            "astrbot_plugin_x", confirm=True, username="u", max_cases=3
+        ))
+        assert r["ok"] is False
+        assert r["error_kind"] == "no_content_all"
+        assert r["summary"]["no_content"] >= 1
+        assert "provider" in r["next_step"].lower()
+        assert "NOT an API-key" in r["next_step"]

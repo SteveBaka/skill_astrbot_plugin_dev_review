@@ -102,6 +102,17 @@ class RuntimeConfig:
             "allow_chat_probe": self.allow_chat_probe,
             "chat_username_configured": bool(self.chat_username),
             "chat_config_name_default": self.chat_config_name or "plugin_dev_skill",
+            # [RUNTIME] These are MCP-host ENV GATES, NOT indicators of the AstrBot
+            # API key's scopes. allow_chat_probe=false just means chat_probe needs
+            # confirm_probe=true per call; chat_username_configured=false just means
+            # the username must be passed per call. Neither means "key lacks chat
+            # scope". A key-scope problem surfaces as auth/403 in tool output, not
+            # as these flags.
+            "env_gate_note": (
+                "allow_chat_probe / chat_username_configured are MCP-host env gates, "
+                "NOT API-key scope indicators. chat_probe works with confirm=true + "
+                "username even when both are false."
+            ),
             # [RUNTIME P1] what agents can do with current env (no secrets)
             "capabilities": {
                 "read_plugins": self.enabled,

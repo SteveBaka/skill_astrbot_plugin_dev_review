@@ -1,0 +1,71 @@
+{
+  "agent": {
+    "agent-runner": "Agent Runner (v4.7.0+)",
+    "context-compression": "Context Compression",
+    "conversation": "Conversation and Dialog Branches",
+    "cron": "Scheduled Tasks (Cron)",
+    "hooks": "Agent-Related Hooks",
+    "index": "Agent System Overview",
+    "invoke-llm": "LLM Invocation",
+    "official-tools": "AstrBot Official Tool List",
+    "persona-control": "Persona Control",
+    "register-skill": "Register Skill (AstrBot Native Skill System)",
+    "sandbox": "Sandbox (Computer Use Runtime)",
+    "subagents": "Sub-Agents (Handoff)",
+    "tools": "Tool Definition"
+  },
+  "design_standards": {
+    "architecture_overview": "Core Architecture Overview",
+    "context_usage": "Context Object Usage Guide",
+    "event_flow": "Message Flow Model",
+    "sandbox": "Sandbox Storage Mounting",
+    "visual_utils": "Visual Utilities (HTML Rendering & Text-to-Image)"
+  },
+  "messages": {
+    "components": "Message Chain Components",
+    "events": "Message Event (AstrMessageEvent)",
+    "model": "Message Model (AstrBotMessage)",
+    "umo": "Unified Message Origin (UMO)"
+  },
+  "platform_adapters": {
+    "adapter_interface": "Platform Adapter Interface",
+    "message_conversion": "Message Conversion Logic",
+    "telegram_media_group": "Telegram Media Group Handling"
+  },
+  "plugin-types": {
+    "README": "Plugin Type Selection Guide",
+    "REVIEW-REPORTS": "Plugin Type Review Reports"
+  },
+  "references": {
+    "best-practices": "AstrBot Plugin Development Best Practices",
+    "conf-schema": "Configuration Schema (`_conf_schema.json`)",
+    "core-concepts": "AstrBot Core API Reference",
+    "modular-split": "When and How to Split main.py",
+    "plugin-patterns": "Plugin Implementation Patterns"
+  },
+  "review": {
+    "auto-fix-guide": "Auto-Fix Guide",
+    "general-file-checklist": "General Code Review Checklist",
+    "main-file-checklist": "main.py Review Checklist (Priority)",
+    "metadata-validation": "metadata.yaml & Project Structure Validation",
+    "review-workflow": "Plugin Review Workflow"
+  },
+  "script": {
+    "index": "Plugin Templates"
+  },
+  "storage_utils": {
+    "file_storage": "File Storage Guidelines",
+    "kv_storage": "Key-Value Storage (KV Storage)",
+    "plugin-i18n": "Plugin Internationalization (i18n)",
+    "text_to_image": "Text to Image"
+  },
+  "webui": {
+    "plugin-pages": "Plugin Dashboard Pages"
+  },
+  "__root__": {
+    "AGENTS": "AGENTS",
+    "README": "README",
+    "SKILL": "SKILL",
+    "plugin-development-workflow": "plugin-development-workflow"
+  }
+}
