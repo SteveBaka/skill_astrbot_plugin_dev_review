@@ -85,8 +85,12 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
 
 # Docs index: prefer the PRECOMPUTED mcp/docs_index.json (millisecond load).
 # Scanning + reading every .md takes ~30s on some volumes (SynologyDrive) and
-# must NEVER run inside the MCP client's request window (30s timeout). Fall back
-# to a live scan only if the json is missing (then cache in memory).
+# must NEVER run inside the MCP client's request window (30s timeout).
+# The index is built EAGERLY at cold start (import time, see init below): when
+# docs_index.json is readable the import stays sub-second; if it is missing or
+# unreadable we fall back to a full live scan right here — outside any request
+# window — so a file-read failure surfaces at startup instead of timing out the
+# first tool call.
 _DOCS_INDEX_JSON = os.path.join(SCRIPT_DIR, "docs_index.json")
 _docs_cache: Dict[str, Dict[str, str]] | None = None
 
@@ -99,8 +103,8 @@ def _load_docs_index() -> Dict[str, Dict[str, str]]:
             return data
     except Exception:
         pass
-    # fallback: live scan (slow on network/cloud volumes) — happens only when the
-    # precomputed index is absent.
+    # fallback: full live scan — only when the precomputed index is missing or
+    # unreadable. Runs at cold start (eager init below), never in a request.
     return discover_docs(SKILL_ROOT)
 
 
@@ -109,6 +113,12 @@ def _get_docs_index() -> Dict[str, Dict[str, str]]:
     if _docs_cache is None:
         _docs_cache = _load_docs_index()
     return _docs_cache
+
+
+# Eager warm-up at cold start: build the full index now (JSON first, live-scan
+# fallback) so the first tool call is never blocked by index I/O and read
+# failures are reported at startup, not as a request timeout.
+_docs_cache = _get_docs_index()
 
 
 def _get_categories() -> list:

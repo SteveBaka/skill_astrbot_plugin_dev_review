@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from typing import Any
 
 # Lazily imported on first tool call. Eager `from . import tools_*` at import time
@@ -32,6 +33,7 @@ _RUNTIME_SUBMODULES = {
     "tools_impl",
     "tools_install",
     "tools_lifecycle",
+    "tools_logs",
     "tools_manage",
     "tools_profile",
     "tools_smoke",
@@ -532,8 +534,7 @@ def register_runtime_tools(mcp: Any) -> None:
     # ── P3+ smoke suite (composite) ────────────────────────────
 
     @mcp.tool()
-    def astrbot_smoke_suite(
-        plugin_id: str,
+    def astrbot_smoke_suite(        plugin_id: str,
         confirm: bool = False,
         username: str = "",
         config_name: str = "",
@@ -567,3 +568,57 @@ def register_runtime_tools(mcp: Any) -> None:
             extra_messages=extra_messages,
             timeout_seconds=timeout_seconds,
         )
+
+    # ── P1 log bridge relay (MCP client → plugin SSE server) ───
+    # ENABLED ONLY when ASTRBOT_LOG_MCP_URL is set on the MCP host. If unset,
+    # these tools are NOT registered (feature disabled; no connection attempt).
+    # Requires astrbot_plugin_mcp_logs_bridge installed+enabled on AstrBot.
+    # ASTRBOT_LOG_MCP_TOKEN (optional) is sent as X-MCP-Token and must equal the
+    # plugin's auth_token / in-AstrBot env. Read-only.
+
+    if os.environ.get("ASTRBOT_LOG_MCP_URL"):
+
+        @mcp.tool()
+        async def astrbot_logs_history(
+            limit: int = 100,
+            level: str = "",
+            keyword: str = "",
+            category: str = "",
+        ) -> str:
+            """
+            [RUNTIME P1] Recent AstrBot logs via MCP (plugin log bridge, read-only).
+
+            Enabled only when ASTRBOT_LOG_MCP_URL is set on the MCP host. Reads
+            the in-process LogBroker cache (last 500 entries, same source as
+            Dashboard /logs/history) through astrbot_plugin_mcp_logs_bridge over
+            MCP. Filters: level (INFO/WARNING/ERROR/...), keyword (substring),
+            category. Optional ASTRBOT_LOG_MCP_TOKEN is sent as X-MCP-Token and
+            must equal the plugin's auth_token.
+            """
+            return await _m("tools_logs").astrbot_logs_history(
+                limit=limit, level=level, keyword=keyword, category=category
+            )
+
+        @mcp.tool()
+        async def astrbot_logs_tail(lines: int = 50, level: str = "") -> str:
+            """
+            [RUNTIME P1] Tail last N AstrBot log lines via MCP (read-only).
+
+            Enabled only when ASTRBOT_LOG_MCP_URL is set. Prefers the in-process
+            LogBroker cache; falls back to the log file when the plugin resolves
+            it.
+            """
+            return await _m("tools_logs").astrbot_logs_tail(lines=lines, level=level)
+
+        @mcp.tool()
+        async def astrbot_logs_search(keyword: str, level: str = "", limit: int = 100) -> str:
+            """
+            [RUNTIME P1] Search recent AstrBot logs for a keyword via MCP (read-only).
+
+            Enabled only when ASTRBOT_LOG_MCP_URL is set. Case-insensitive
+            substring search over the in-process LogBroker cache through
+            astrbot_plugin_mcp_logs_bridge.
+            """
+            return await _m("tools_logs").astrbot_logs_search(
+                keyword=keyword, level=level, limit=limit
+            )

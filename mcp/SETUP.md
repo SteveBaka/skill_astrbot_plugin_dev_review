@@ -128,6 +128,9 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_scaffold_plugin` | **[P2+]** Scaffold `command\|llm_tool\|session\|cron\|hook\|web\|agent\|adapter` from contracts; review error=0 invariant |
 | `astrbot_review_path` | **[P2+]** AST review `profile=plugin\|adapter` (FIX-mapped; contracts single source) |
 | `astrbot_smoke_suite` | **[P3+]** Composite smoke after **user** Dashboard config (enable / plugin_set / schema) |
+| `astrbot_logs_history` | **[P1]** Recent AstrBot logs via MCP — relay to `astrbot_plugin_mcp_logs_bridge` SSE server (`limit`/`level`/`keyword`/`category` filters; needs `ASTRBOT_LOG_MCP_URL`) |
+| `astrbot_logs_tail` | **[P1]** Tail last N log lines via MCP relay (read-only) |
+| `astrbot_logs_search` | **[P1]** Keyword search over recent logs via MCP relay (read-only) |
 
 CLI check (if `kilo` is installed):
 
@@ -156,6 +159,8 @@ Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / 
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | no | fixed smoke session id (default `mcp-smoke-<username>`) |
 | `ASTRBOT_ERROR_KB` | no | error-fingerprint store path (gitignored); install/smoke failures auto-record desensitized fingerprints |
 | `ASTRBOT_DEV_WORKSPACE` | no | scaffold staging dir (default `~/.astrbot_skill_workspace`; never cwd) |
+| `ASTRBOT_LOG_MCP_URL` | **enables** `astrbot_logs_*` | SSE endpoint of `astrbot_plugin_mcp_logs_bridge`. **Feature is DISABLED (tools not registered) when unset**; set explicitly to enable, e.g. `http://<astrbot>:6185/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/sse`. `ASTRBOT_BASE_URL` alone does NOT enable it |
+| `ASTRBOT_LOG_MCP_TOKEN` | no | Shared bidirectional auth token; sent as `X-MCP-Token` to the plugin. Must equal the plugin's `auth_token` config (or the `ASTRBOT_LOG_MCP_TOKEN` env inside AstrBot). Prevents accidentally talking to the wrong bridge |
 
 > **Env-gate vs key-scope**: `allow_chat_probe` / `chat_username_configured` in
 > `runtime_info` are **MCP-host env gates**, not API-key scope indicators. A key
@@ -400,19 +405,61 @@ Recommended order: `astrbot_review_path` → fix errors → `astrbot_plugin_inst
 
 Same gates as chat_probe: `confirm=true` (or `ASTRBOT_ALLOW_CHAT_PROBE`), chat-scoped key, username. Admin commands skipped unless `include_admin=true`.
 
-**Not done yet:** local log tail (P4).
+**Not done yet:** ~~local log tail (P4)~~ → **done via MCP log bridge** (below).
 
 **Result analysis (P0):** success only means OpenAPI control plane is reachable and auth works.  
 **Result analysis (P1):** manage tools change live AstrBot state; use deliberately on LAN instances.  
 **Result analysis (P2 uninstall):** soft refuse means safety gate worked; hard `ok` means plugin removed with the `kept` flags in the response.
+
+### Log bridge (P1) — read AstrBot logs via MCP
+
+The public OpenAPI has **no API-key-accessible log endpoint** (`/logs/history` and
+`/logs/live` require the dashboard-only `system` scope). To read AstrBot runtime logs,
+install the companion plugin **`astrbot_plugin_mcp_logs_bridge`** (source:
+`script/astrbot_plugin_mcp_logs_bridge/`; `astrbot_plugin_install_path`). It hosts an
+MCP **SSE server inside the AstrBot process** that reads the shared in-process
+`LogBroker` (same source as Dashboard `/logs/history` — last 500 entries with
+`level`/`time`/`data`/`category`), falling back to the log file when file logging is on.
+
+| Piece | Value |
+|-------|-------|
+| SSE endpoint | `http://<astrbot>:6185/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/sse` |
+| Message endpoint | same path with `/messages` (JSON-RPC POST) |
+| Auth (AstrBot layer) | plugin-scope API key via `X-API-Key` header (both endpoints) |
+| Auth (shared token, recommended) | `X-MCP-Token` must equal the plugin's `auth_token` (config) or `ASTRBOT_LOG_MCP_TOKEN` (env inside AstrBot) — **set it on both sides** to avoid accidentally talking to the wrong bridge |
+| Relay tools | `astrbot_logs_history` / `astrbot_logs_tail` / `astrbot_logs_search` |
+| MCP-host env | `ASTRBOT_LOG_MCP_URL` (**required to enable**); `ASTRBOT_LOG_MCP_TOKEN` (optional shared token); `ASTRBOT_LOG_MCP_TIMEOUT` (default 15s) |
+
+**Enablement gate (security):** the `astrbot_logs_*` relay tools are **NOT
+registered** unless `ASTRBOT_LOG_MCP_URL` is explicitly set on the MCP host.
+`ASTRBOT_BASE_URL` alone does NOT enable them. Unset URL ⇒ feature fully disabled
+(no connection attempts); set it and restart the MCP server to enable.
+
+Wiring:
+1. Install the plugin on AstrBot (`astrbot_plugin_install_path(path=.../astrbot_plugin_mcp_logs_bridge)`), enable it.
+2. (Recommended) Set the same shared token on BOTH sides: plugin config `auth_token`
+   (or AstrBot env `ASTRBOT_LOG_MCP_TOKEN`) AND MCP host env `ASTRBOT_LOG_MCP_TOKEN`.
+3. MCP host: set `ASTRBOT_LOG_MCP_URL` (explicitly — not auto-derived), restart MCP.
+4. Call `astrbot_logs_history(limit=...)` / `astrbot_logs_tail(...)` / `astrbot_logs_search(keyword=...)`.
+
+Result analysis:
+- `error_kind=not_configured` → `ASTRBOT_LOG_MCP_URL` unset (feature off) — set it and restart MCP.
+- `error_kind=mcp_call_error` → endpoint unreachable, plugin not enabled, key scope
+  missing, **or `X-MCP-Token` mismatch** (host token ≠ plugin auth_token).
+- HTTP 401 on `/sse` / `/messages` → shared token missing/wrong on the client side.
+
+Privacy: tools return log text only (no configs/secrets); the relay is read-only; no
+system-scope workaround is attempted (that scope is not grantable to API keys by design).
 
 ## 3.2 Maintenance (dev)
 
 - **Docs index (`mcp/docs_index.json`)**: precomputed so the MCP server loads doc
   metadata in milliseconds. **Regenerate after adding/renaming skill `.md` files**:
   `cd mcp && .venv/bin/python3 -c "import json,sys; sys.path.insert(0,'.'); from server import discover_docs, SKILL_ROOT; json.dump(discover_docs(SKILL_ROOT), open('docs_index.json','w'), ensure_ascii=False, indent=2)"`
-  (Server falls back to a live scan if the json is missing — but that scan takes
-  ~30s on cloud-synced volumes and must not run inside the MCP request window.)
+  (The server loads the index **eagerly at cold start**: JSON first (milliseconds);
+  if the json is missing/unreadable it falls back to a live scan — that scan takes
+  ~30s on cloud-synced volumes and now runs during startup, never inside a request
+  window, so the failure surfaces at startup instead of timing out a tool call.)
 - **Unit tests** (`mcp/tests/`, no AstrBot needed; env auto-cleared):
   `.venv/bin/pytest tests/` — covers zip_pack exclusions/naming, config gates,
   chat SSE/session policy, client auth/errors. Fixture plugin:

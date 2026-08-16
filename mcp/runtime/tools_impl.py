@@ -70,6 +70,13 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             "astrbot_plugin_log_level_set",
             "astrbot_plugin_failed_remove",
         ],
+        "log_bridge": (
+            "astrbot_logs_history/tail/search ENABLED ONLY when "
+            "ASTRBOT_LOG_MCP_URL is set on the MCP host (plugin "
+            "astrbot_plugin_mcp_logs_bridge). Optional shared token: "
+            "ASTRBOT_LOG_MCP_TOKEN sent as X-MCP-Token; must equal the plugin's "
+            "auth_token config / in-AstrBot env."
+        ),
         "install_scheme_a": "pack(.gitignore) → install/upload → enable → reload → failed",
         "plugin_dev_skill": (
             "ensure from default + user provider; WebChat main test; "

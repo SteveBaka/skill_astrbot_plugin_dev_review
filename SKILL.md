@@ -347,7 +347,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   1. After **new plugin** install, or after adding/changing anything the user must set in AstrBot UI — including **`_conf_schema.json` fields**, profile **`plugin_set`**, per-tool enable, provider, etc. — **stop and tell the user** to adjust in **AstrBot Dashboard** (plugin config + WebChat profile `plugin_dev_skill` / `plugin_set`).
   2. **Do not** run `astrbot_smoke_suite` / `chat_probe` until the user confirms those settings are done (or explicitly asks to smoke anyway).
   3. Agent does **not** silently rewrite live profile `plugin_set` or plugin config to “make smoke pass” unless the user clearly orders that mutation.
-- **Observability scope**: for the plugin under development only — `plugins/failed` + smoke/SSE; **no** system-wide AstrBot log tail in MCP
+- **Observability scope**: for the plugin under development only — `plugins/failed` + smoke/SSE; system-wide log tail **only via** `astrbot_plugin_mcp_logs_bridge` (`astrbot_logs_history/tail/search`, needs `ASTRBOT_LOG_MCP_URL`; see `mcp/SETUP.md` § Log bridge). No other system log access.
 - **High-risk ops require explicit user approval before execution** — never do these until the user clearly allows:
   - `git commit`, `git push`, `git push --force` / force-with-lease, `git amend` of shared commits
   - Deleting repos/files en masse, publishing/releasing packages

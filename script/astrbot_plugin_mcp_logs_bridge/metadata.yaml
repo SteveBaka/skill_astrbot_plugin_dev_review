@@ -1,0 +1,7 @@
+name: astrbot_plugin_mcp_logs_bridge
+display_name: MCP Logs Bridge
+desc: 在 AstrBot 进程内宿主一个 MCP 服务器（SSE 传输），通过 MCP 同步暴露 AstrBot 运行日志（logs_history / logs_tail / logs_search），供本开发 skill 的 MCP 客户端或任意 MCP 客户端读取。
+version: v0.1.1
+author: unsuited_
+repo:
+astrbot_version: ">=4.16,<5"

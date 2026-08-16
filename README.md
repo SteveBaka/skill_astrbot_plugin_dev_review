@@ -216,6 +216,8 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | `mcp-smoke-<username>` | smoke 固定会话 id（所有 probe 复用同一条，Dashboard 可管理） |
 | `ASTRBOT_ERROR_KB` | 空 | 错误指纹库路径（gitignored）；install/smoke 失败自动记录脱敏指纹，反哺 auto-fix-guide |
 | `ASTRBOT_DEV_WORKSPACE` | `~/.astrbot_skill_workspace` | scaffold 暂存目录（绝不用 cwd，避免容器内落到 /AstrBot/<name>/） |
+| `ASTRBOT_LOG_MCP_URL` | 空 | **启用**日志桥接（可选）；未设置 ⇒ 日志工具不注册、不调用 |
+| `ASTRBOT_LOG_MCP_TOKEN` | 空 | 日志桥接双向共享令牌（`X-MCP-Token`），须与插件 `auth_token` 相同 |
 
 ### 功能一览（工具）
 
@@ -231,6 +233,7 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | P2.5 | 开发档案 `plugin_dev_skill`、装后 Dashboard 提示 | `ensure_plugin_dev_skill` / `providers_brief` / `post_install_hints` | 建档需 MUTATIONS；**不私自读配置全文** |
 | P3 | WebChat 会话列表、可选 smoke、webchat 会话清理 | `chat_sessions_brief` / `chat_probe` / `chat_sessions_cleanup` | Token 含 **chat**；probe 需用户允许；固定会话 `mcp-smoke-<username>` |
 | P3+ | **smoke 复合套件**：状态 → 按组件生成用例 → 逐条 probe → 崩溃复查 → 聚合判定 | `smoke_suite` | 同 chat_probe 门禁；admin 指令默认跳过 |
+| P1（可选） | **日志桥接（MCP→插件）**：读取 AstrBot 运行日志 | `logs_history` / `logs_tail` / `logs_search` | 需装 `astrbot_plugin_mcp_logs_bridge` + `ASTRBOT_LOG_MCP_URL`；未设置不注册不调用 |
 
 ### WebChat 会话策略（P3 设计说明）
 
@@ -241,6 +244,35 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 - `chat_sessions_cleanup` 仅能删 webchat 平台会话（其他平台一律拒绝，隐私硬边界），且仅对 API Key 自建会话有效
 - **不要**为绕过此限制给 API Key 加 system 权限——权限最小化优先
 - **`chat_probe` 的 message 用插件自己的命令**：不确定时先发 `/plugin_help` 探测，再按其真实指令测试；**不要**硬编码其它插件的命令（如 `/ttsinfo` 仅 mimo_tts 使用）
+
+### 日志桥接（可选）—— 读取 AstrBot 运行日志
+
+AstrBot 的公开 OpenAPI **没有** API Key 可用的日志接口（`/logs/history`、`/logs/live` 需 dashboard-only 的 `system` 域）。如需读取运行日志，可**可选地**加装配套插件 **`astrbot_plugin_mcp_logs_bridge`**（源码：`script/astrbot_plugin_mcp_logs_bridge/`）：它在 AstrBot 进程内宿主一个 MCP SSE 服务器，直接读共享的进程内 `LogBroker`（与 Dashboard `/logs/history` 同源，最近 500 条），经 `astrbot_logs_history` / `astrbot_logs_tail` / `astrbot_logs_search` 三个只读工具同步返回。
+
+> **对 agent 的要求 —— 与其它插件事项同一套 MCP 逻辑处理，主打「未启用不调用」：**
+> 1. 该插件属于**普通 AstrBot 插件**，其安装 / 启用 / 配置 / 重载 / 失败诊断一律走既有 MCP 流程（`astrbot_plugin_install_path` → 启用 → Dashboard 配置 → `astrbot_plugin_failed` 排查），与处理其它插件完全一致，**没有特殊捷径**。
+> 2. **未启用不调用**：MCP 宿主机**未设置 `ASTRBOT_LOG_MCP_URL`** 时，`astrbot_logs_*` 工具**不注册、不产生任何连接尝试**（`ASTRBOT_BASE_URL` 不会隐式启用）；工具不可用时不得猜测或绕过，直接按 `not_configured` 提示给出接线指引。
+> 3. **鉴权一致**：`ASTRBOT_LOG_MCP_TOKEN`（可选）作为 `X-MCP-Token` 发送，须与插件侧 `auth_token` 配置（或 AstrBot 内同名环境变量）**完全相同**；令牌缺失/不匹配时端点返回 401，视为连接失败处理，不做降级。
+> 4. 只读、仅返回日志文本（含 ANSI 颜色码）；不读取插件/AstrBot 配置或秘密；不需要 system 域权限。
+
+**环境变量（MCP 宿主机侧）：**
+
+| 环境变量 | 默认 | 作用 |
+|----------|------|------|
+| `ASTRBOT_LOG_MCP_URL` | 空 | **必须显式设置**才启用日志桥（如 `http://<astrbot>:6185/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/sse`）；未设置 ⇒ 工具不注册、不调用 |
+| `ASTRBOT_LOG_MCP_TOKEN` | 空 | 双向共享令牌（`X-MCP-Token`），须与插件 `auth_token`（或 AstrBot 内 env）相同 |
+| `ASTRBOT_LOG_MCP_TIMEOUT` | `15` | 单次日志读取超时（秒） |
+
+**插件侧配置（AstrBot Dashboard 插件页）：**
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `enable_bridge` | `true` | 是否启用日志桥接服务 |
+| `auth_token` | 空 | 双向共享令牌；留空则回退读 AstrBot 进程 env `ASTRBOT_LOG_MCP_TOKEN`；两者皆空不校验（不推荐） |
+| `log_file_path` | 空 | 可选：日志文件路径兜底（留空用内存 LogBroker 缓存） |
+| `history_limit` / `search_limit` | `200` | `logs_history` / `logs_search` 单次返回上限 |
+
+**功能一览**：`astrbot_logs_history(limit/level/keyword/category)` · `astrbot_logs_tail(lines/level)` · `astrbot_logs_search(keyword/level/limit)` —— 均依赖 `ASTRBOT_LOG_MCP_URL`；结果含 `source: broker|file`。
 
 ---
 
@@ -524,8 +556,9 @@ skill_astrbot_plugin_dev_review/
     │   ├── scaffold_plugin.py            # 契约脚手架（8 类型 + adapter 框架，error=0 不变量）
     │   ├── tools_smoke.py                # smoke 复合套件（用例生成 → probe → 判定）
     │   ├── tools_profile.py              # P2.5 plugin_dev_skill 档案 / Provider 清单
-    │   └── tools_chat.py                 # P3 WebChat smoke（固定会话）+ 会话清理
-    ├── tests/                            # 单元测试（180 用例，无需 AstrBot 实例）
+    │   ├── tools_chat.py                 # P3 WebChat smoke（固定会话）+ 会话清理
+    │   └── tools_logs.py                 # P1（可选）日志桥中继：astrbot_logs_*（MCP 客户端→插件 SSE，未设 ASTRBOT_LOG_MCP_URL 不注册）
+    ├── tests/                            # 单元测试（226 用例，无需 AstrBot 实例）
     │   ├── conftest.py                   # 自动清空 ASTRBOT_* env（永不误触真实实例）
     │   ├── test_zip_pack.py              # 打包排除/命名规则（type2 示例插件作 fixture）
     │   ├── test_config.py                # env 解析与安全开关默认值
@@ -537,10 +570,17 @@ skill_astrbot_plugin_dev_review/
     │   ├── test_review_static.py         # 静态审查规则（示例插件须零 error）
     │   ├── test_scaffold_plugin.py       # scaffold 全类型 error=0 不变量
     │   ├── test_error_fingerprint.py     # 脱敏 / store / FIX 提案校验
-    │   └── test_contracts_import_table.py # import 表单源（docs MCP validate_import）
+    │   ├── test_contracts_import_table.py # import 表单源（docs MCP validate_import）
+    │   ├── test_tools_logs.py            # 日志桥启用门禁 / 鉴权头 / 结果扁平化
+    │   └── test_register_log_gate.py     # ASTRBOT_LOG_MCP_URL 未设置 ⇒ logs_* 不注册
     └── scripts/
         ├── check_openapi_drift.py        # OpenAPI 契约漂移检测（对比线上 spec）
         └── error_kb.py                   # 错误指纹 record/report/propose
+
+script/
+└── astrbot_plugin_mcp_logs_bridge/       # 可选配套插件：进程内 MCP SSE 日志服务器
+    ├── main.py                           # Star 子类 + register_web_api（/sse + /messages）
+    ├── metadata.yaml / _conf_schema.json / README.md / requirements.txt
 ```
 
 完整文件地图见 `SKILL.md`。

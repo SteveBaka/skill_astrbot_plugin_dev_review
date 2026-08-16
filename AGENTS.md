@@ -59,6 +59,17 @@ This directory is a **complete skill system** for AstrBot plugin development wit
 
 **Do not use as authority**: `docs/en/dev/plugin.md` (legacy redirect only)
 
+**Log reading**: AstrBot's public OpenAPI exposes **no** API-key-accessible log endpoint
+(`/logs/history` + `/logs/live` need the dashboard-only `system` scope). To read AstrBot
+logs, use the MCP log bridge: install **`astrbot_plugin_mcp_logs_bridge`
+(`script/astrbot_plugin_mcp_logs_bridge/`)** on AstrBot (hosts an MCP SSE server that
+reads the in-process `LogBroker`, same source as `/logs/history`). The skill MCP relay
+tools `astrbot_logs_history` / `astrbot_logs_tail` / `astrbot_logs_search` are
+**registered ONLY when `ASTRBOT_LOG_MCP_URL` is explicitly set** on the MCP host
+(`ASTRBOT_BASE_URL` alone does not enable them); set `ASTRBOT_LOG_MCP_TOKEN` on the MCP
+host and the plugin's `auth_token` (or AstrBot env `ASTRBOT_LOG_MCP_TOKEN`) to the SAME
+value for bidirectional `X-MCP-Token` auth. Full setup: `mcp/SETUP.md` § log bridge.
+
 **Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes); skill still documents ≥4.16 floor
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
