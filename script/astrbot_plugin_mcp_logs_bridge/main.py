@@ -115,8 +115,25 @@ class MCPLogsBridge(Star):
         except Exception:
             return ""
 
+    def _resolve_log_path(self) -> str:
+        """与 AstrBot 本体 log_file_path 语义一致（log.py:_resolve_log_path）。
+
+        空 → <data>/logs/astrbot.log；绝对路径 → 原样；相对路径 → <data>/<path>。
+        """
+        configured = str((self.config or {}).get("log_file_path") or "").strip()
+        if not configured:
+            return self._default_log_path()
+        if os.path.isabs(configured):
+            return configured
+        try:
+            from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+
+            return os.path.join(get_astrbot_data_path(), configured)
+        except Exception:
+            return configured
+
     def _read_file_tail(self, lines: int) -> list[str]:
-        path = (self.config or {}).get("log_file_path") or self._default_log_path()
+        path = self._resolve_log_path()
         if not path or not os.path.isfile(path):
             return []
         try:

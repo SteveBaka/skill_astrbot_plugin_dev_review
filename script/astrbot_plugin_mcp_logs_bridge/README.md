@@ -72,9 +72,9 @@ MCP 客户端注册示例（带令牌）：
 |------|------|------|------|
 | `enable_bridge` | bool | true | 是否启用 MCP 日志桥接服务 |
 | `auth_token` | string | 空 | 双向共享令牌（`X-MCP-Token`）。留空则回退读取 AstrBot 进程环境变量 `ASTRBOT_LOG_MCP_TOKEN`；两者皆空时不校验（不推荐，仅依赖 AstrBot API Key 鉴权） |
-| `log_file_path` | string | 空 | 可选：日志文件路径（兜底读取；留空则用默认 `<data>/logs/astrbot.log`） |
-| `history_limit` | int | 200 | `logs_history` 单次返回上限 |
-| `search_limit` | int | 200 | `logs_search` 单次返回上限 |
+| `log_file_path` | string | 空 | 可选：日志文件路径（兜底读取）。与 AstrBot 本体语义一致：相对路径以 data 目录为基准（如 `logs/astrbot.log`），绝对路径原样使用；留空则用默认 `<data>/logs/astrbot.log` |
+| `history_limit` | int | 200 | `logs_history` 未传 limit 时的默认上限（1-500，超出丢弃，最新在前） |
+| `search_limit` | int | 200 | `logs_search` 未传 limit 时的默认上限（1-500，最新在前截断） |
 
 ## 安全
 
