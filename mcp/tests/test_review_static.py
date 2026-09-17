@@ -3,6 +3,7 @@
 Primary fixture: the real example plugin plugin-types/type2-session-waiter
 (must be finding-free at error level). Synthetic bad plugins cover each rule.
 """
+
 from __future__ import annotations
 
 from runtime.review_static import review_adapter_directory, review_plugin_directory
@@ -21,9 +22,7 @@ def _write_plugin(tmp_path, main_src: str, meta: str | None = None, req: str = "
 
 
 def _rules(report, severity=None):
-    return [
-        f.rule for f in report.findings if severity is None or f.severity == severity
-    ]
+    return [f.rule for f in report.findings if severity is None or f.severity == severity]
 
 
 # ── real example plugin must pass at error level ───────────────
@@ -81,22 +80,22 @@ class TestImportRules:
 # ── AST structure rules ────────────────────────────────────────
 
 
-STAR_OK = '''
+STAR_OK = """
 from astrbot.api.star import Star, Context
 
 class MyPlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
         self.config = config
-'''
+"""
 
-STAR_NO_SUPER = '''
+STAR_NO_SUPER = """
 from astrbot.api.star import Star, Context
 
 class MyPlugin(Star):
     def __init__(self, context: Context):
         self.context = context
-'''
+"""
 
 
 class TestStructureRules:
@@ -109,12 +108,7 @@ class TestStructureRules:
         assert "FIX-01" not in _rules(report)
 
     def test_fix20_dataclass_mutable_default(self, tmp_path):
-        src = (
-            "from dataclasses import dataclass\n"
-            "@dataclass\n"
-            "class P:\n"
-            "    params: dict = {}\n"
-        )
+        src = "from dataclasses import dataclass\n@dataclass\nclass P:\n    params: dict = {}\n"
         report = review_plugin_directory(_write_plugin(tmp_path, src))
         assert "FIX-20" in _rules(report, "error")
 
@@ -126,7 +120,9 @@ class TestStructureRules:
             "    pass\n"
         )
         report = review_plugin_directory(_write_plugin(tmp_path, src))
-        assert "FIX-21" in _rules(report, "error")
+        # H1/FIX-21: on_keyword never existed — warning (AttributeError risk), not error
+        assert "FIX-21" in _rules(report, "warning")
+        assert "FIX-21" not in _rules(report, "error")
 
     def test_fix17_command_missing_docstring(self, tmp_path):
         src = (
@@ -150,6 +146,19 @@ class TestStructureRules:
         )
         report = review_plugin_directory(_write_plugin(tmp_path, src))
         assert "FIX-02" in _rules(report, "warning")
+
+    def test_fix02_typed_structured_is_info(self, tmp_path):
+        src = (
+            "from astrbot.api.event import filter\n"
+            "class T:\n"
+            "    @filter.command('add')\n"
+            "    async def add(self, event, a: int, b: int):\n"
+            "        '''add'''\n"
+            "        return a + b\n"
+        )
+        report = review_plugin_directory(_write_plugin(tmp_path, src))
+        assert "FIX-02" not in _rules(report, "warning")
+        assert "FIX-02" in _rules(report, "info")
 
     def test_fix27_startools_outside_star(self, tmp_path):
         src = (
@@ -178,7 +187,8 @@ class TestMetadataRules:
 
     def test_naming_prefix(self, tmp_path):
         root = _write_plugin(
-            tmp_path, "x = 1\n",
+            tmp_path,
+            "x = 1\n",
             meta="name: myplugin\ndesc: d\nversion: 1.0.0\nauthor: a\n",
         )
         report = review_plugin_directory(root)
@@ -186,7 +196,8 @@ class TestMetadataRules:
 
     def test_astrbot_version_v_prefix(self, tmp_path):
         root = _write_plugin(
-            tmp_path, "x = 1\n",
+            tmp_path,
+            "x = 1\n",
             meta="name: astrbot_plugin_x\ndesc: d\nversion: 1.0.0\nauthor: a\nastrbot_version: '>=v4.16'\n",
         )
         report = review_plugin_directory(root)
@@ -200,9 +211,7 @@ class TestRequirementsRules:
         assert "REQ-01" in _rules(report, "warning")
 
     def test_declared_dep_clean(self, tmp_path):
-        root = _write_plugin(
-            tmp_path, "import aiofiles\nprint(aiofiles)\n", req="aiofiles>=23.0\n"
-        )
+        root = _write_plugin(tmp_path, "import aiofiles\nprint(aiofiles)\n", req="aiofiles>=23.0\n")
         report = review_plugin_directory(root)
         assert "REQ-01" not in _rules(report)
 
@@ -254,7 +263,7 @@ def _write_adapter(tmp_path, main_src: str):
 
 class TestAdapterStarEntry:
     def test_fix30_register_without_star(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.core.platform.register import register_platform_adapter
 from astrbot.api.event import MessageChain
@@ -267,14 +276,14 @@ class X(Platform):
         await asyncio.sleep(1)
     async def send_by_session(self, session, message_chain: MessageChain):
         pass
-'''
+"""
         report = review_adapter_directory(_write_adapter(tmp_path, src))
         rules = [f.rule for f in report.findings if f.severity == "error"]
         assert "FIX-30" in rules
         assert not report.ok
 
     def test_star_entry_clears_fix30(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -292,7 +301,7 @@ class X(Platform):
 class XPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-'''
+"""
         report = review_adapter_directory(_write_adapter(tmp_path, src))
         rules = [f.rule for f in report.findings if f.severity == "error"]
         assert "FIX-30" not in rules
@@ -322,7 +331,7 @@ class TestAdapterBehavioralChecks:
         return d
 
     def test_fix35_get_sender_id_warns(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -343,14 +352,14 @@ class XPlugin(Star):
 
 async def send(msg):
     await client.send_text(self.get_sender_id(), msg)  # no get_session_id
-'''
+"""
         report = review_adapter_directory(self._adapter(tmp_path, src))
         rules = [f.rule for f in report.findings]
         assert "FIX-35" in rules
         assert report.ok
 
     def test_fix35_session_fallback_no_warning(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -372,12 +381,12 @@ class XPlugin(Star):
 async def send(msg):
     sid = self.get_session_id() or self.get_sender_id()
     await client.send_text(sid, msg)
-'''
+"""
         report = review_adapter_directory(self._adapter(tmp_path, src))
         assert "FIX-35" not in [f.rule for f in report.findings]
 
     def test_self_id_set_clears_fix36(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import AstrBotMessage, Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -399,13 +408,13 @@ class XPlugin(Star):
 def convert():
     abm = AstrBotMessage(...)
     abm.self_id = "wxid_xxx"
-'''
+"""
         report = review_adapter_directory(self._adapter(tmp_path, src))
         rules = [f.rule for f in report.findings]
         assert "FIX-36" not in rules
 
     def test_self_id_missing_warns(self, tmp_path):
-        src = '''import asyncio
+        src = """import asyncio
 from astrbot.api.platform import AstrBotMessage, Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -427,7 +436,7 @@ class XPlugin(Star):
 def convert():
     abm = AstrBotMessage(...)
     # no self_id set
-'''
+"""
         report = review_adapter_directory(self._adapter(tmp_path, src))
         rules = [f.rule for f in report.findings]
         assert "FIX-36" in rules
@@ -444,7 +453,7 @@ class TestAdapterFix32Collision:
         (d / "requirements.txt").write_text("#\n", encoding="utf-8")
         tmpl = ", ".join(f'"{k}": ""' for k in tmpl_keys)
         (d / "main.py").write_text(
-            f'''import asyncio
+            f"""import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -462,7 +471,7 @@ class Col(Platform):
 class ColPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-''',
+""",
             encoding="utf-8",
         )
         return d
@@ -475,7 +484,5 @@ class ColPlugin(Star):
         assert report.ok
 
     def test_prefixed_fields_clean(self, tmp_path):
-        report = review_adapter_directory(
-            self._adapter(tmp_path, ["xx_port", "xx_token"])
-        )
+        report = review_adapter_directory(self._adapter(tmp_path, ["xx_port", "xx_token"]))
         assert "FIX-32" not in [f.rule for f in report.findings]

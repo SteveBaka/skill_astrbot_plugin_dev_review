@@ -1,4 +1,5 @@
 """Unit tests for runtime.config — env parsing that backs every security gate."""
+
 from __future__ import annotations
 
 from runtime.config import (
@@ -81,8 +82,13 @@ class TestLoadConfig:
         caps = pub["capabilities"]
         assert caps["read_plugins"] is True
         # mutations off → all write capabilities false
-        for key in ("uninstall", "install_path", "ensure_plugin_dev_skill",
-                    "reload_enable_config_write", "chat_sessions_cleanup"):
+        for key in (
+            "uninstall",
+            "install_path",
+            "ensure_plugin_dev_skill",
+            "reload_enable_config_write",
+            "chat_sessions_cleanup",
+        ):
             assert caps[key] is False, key
 
 

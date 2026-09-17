@@ -23,6 +23,7 @@ Exit codes:
 Snapshot: "AstrBot OpenAPI v1.json" at repo root (gitignored; local dev asset).
 ETag sidecar: ".astrbot_openapi.etag" next to it (gitignored) for cheap 304 checks.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,6 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
 
 LIVE_URL = "https://docs.astrbot.app/openapi.json"
 
@@ -60,9 +60,9 @@ def normalize_path(path: str) -> str:
     return _PARAM_SEG.sub("{}", path)
 
 
-def extract_runtime_paths(runtime_dir: Path = RUNTIME_DIR) -> Set[str]:
+def extract_runtime_paths(runtime_dir: Path = RUNTIME_DIR) -> set[str]:
     """Scan runtime/*.py for /api/v1/... literals (f-string args normalized)."""
-    used: Set[str] = set()
+    used: set[str] = set()
     for py in sorted(runtime_dir.glob("*.py")):
         text = py.read_text(encoding="utf-8")
         # mask f-string expressions (may contain quotes, e.g. existing['id'])
@@ -85,7 +85,7 @@ def _path_matches_template(used: str, template: str) -> bool:
     us, ts = used.split("/"), template.split("/")
     if len(us) != len(ts):
         return False
-    for u, t in zip(us, ts):
+    for u, t in zip(us, ts, strict=False):
         if t == "{}":
             # template param slot accepts any used segment (literal or param)
             continue
@@ -95,9 +95,11 @@ def _path_matches_template(used: str, template: str) -> bool:
     return True
 
 
-def _resolve_against_spec(used_paths: Set[str], spec_ops: Dict[str, List[str]]) -> Dict[str, str | None]:
+def _resolve_against_spec(
+    used_paths: set[str], spec_ops: dict[str, list[str]]
+) -> dict[str, str | None]:
     """Map each used path -> matching spec template (or None)."""
-    out: Dict[str, str | None] = {}
+    out: dict[str, str | None] = {}
     templates = list(spec_ops)
     for up in used_paths:
         if up in spec_ops:
@@ -108,9 +110,9 @@ def _resolve_against_spec(used_paths: Set[str], spec_ops: Dict[str, List[str]]) 
     return out
 
 
-def spec_operations(spec: dict) -> Dict[str, List[str]]:
+def spec_operations(spec: dict) -> dict[str, list[str]]:
     """{normalized_path: [METHODS]} from an OpenAPI spec."""
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for path, item in (spec.get("paths") or {}).items():
         if not isinstance(item, dict):
             continue
@@ -119,7 +121,7 @@ def spec_operations(spec: dict) -> Dict[str, List[str]]:
     return out
 
 
-def fetch_live(etag: str | None) -> Tuple[str, bytes | None, str | None]:
+def fetch_live(etag: str | None) -> tuple[str, bytes | None, str | None]:
     """
     Return (status, body, new_etag).
 
@@ -140,21 +142,15 @@ def fetch_live(etag: str | None) -> Tuple[str, bytes | None, str | None]:
         return f"error:{type(exc).__name__}: {exc}", None, None
 
 
-def diff_ops(
-    old: Dict[str, List[str]], new: Dict[str, List[str]]
-) -> Dict[str, List[str]]:
+def diff_ops(old: dict[str, list[str]], new: dict[str, list[str]]) -> dict[str, list[str]]:
     """Structured drift between two {path: [methods]} maps."""
     added = sorted(set(new) - set(old))
     removed = sorted(set(old) - set(new))
-    changed = sorted(
-        p for p in set(old) & set(new) if sorted(old[p]) != sorted(new[p])
-    )
+    changed = sorted(p for p in set(old) & set(new) if sorted(old[p]) != sorted(new[p]))
     return {"added_paths": added, "removed_paths": removed, "changed_methods": changed}
 
 
-def runtime_impact(
-    drift: Dict[str, List[str]], runtime_paths: Set[str]
-) -> List[str]:
+def runtime_impact(drift: dict[str, list[str]], runtime_paths: set[str]) -> list[str]:
     """Runtime-used endpoints hit by removed/changed entries (added is safe)."""
     hit_templates = set(drift["removed_paths"]) | set(drift["changed_methods"])
     impacted = []
@@ -164,9 +160,7 @@ def runtime_impact(
     return sorted(impacted)
 
 
-def check_runtime_vs_spec(
-    spec_ops: Dict[str, List[str]], runtime_paths: Set[str]
-) -> List[str]:
+def check_runtime_vs_spec(spec_ops: dict[str, list[str]], runtime_paths: set[str]) -> list[str]:
     """Runtime-used paths with no matching template in a spec (broken contract)."""
     resolved = _resolve_against_spec(runtime_paths, spec_ops)
     return sorted(p for p, hit in resolved.items() if hit is None)

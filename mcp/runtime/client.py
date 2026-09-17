@@ -17,8 +17,9 @@ Design notes for later debugging:
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import httpx
@@ -31,14 +32,14 @@ class ApiResult:
     """Normalized result for MCP tools (always JSON-serializable via to_dict)."""
 
     ok: bool
-    status_code: Optional[int]
+    status_code: int | None
     data: Any
-    error: Optional[str]
-    error_kind: Optional[str]
-    url: Optional[str]
-    elapsed_ms: Optional[float]
+    error: str | None
+    error_kind: str | None
+    url: str | None
+    elapsed_ms: float | None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "ok": self.ok,
             "status_code": self.status_code,
@@ -50,7 +51,7 @@ class ApiResult:
         }
 
 
-def _build_headers(cfg: RuntimeConfig) -> Dict[str, str]:
+def _build_headers(cfg: RuntimeConfig) -> dict[str, str]:
     headers = {
         "Accept": "application/json",
         "User-Agent": "skill-astrbot-plugin-mcp-runtime/0.4-p3",
@@ -95,7 +96,7 @@ def _classify_httpx_error(exc: BaseException) -> tuple[str, str]:
 class AstrBotClient:
     """Synchronous client (FastMCP tools are sync-friendly)."""
 
-    def __init__(self, cfg: Optional[RuntimeConfig] = None) -> None:
+    def __init__(self, cfg: RuntimeConfig | None = None) -> None:
         self.cfg = cfg or load_config()
 
     def _url(self, path: str) -> str:
@@ -176,9 +177,9 @@ class AstrBotClient:
         method: str,
         path: str,
         *,
-        params: Optional[Mapping[str, Any]] = None,
+        params: Mapping[str, Any] | None = None,
         json_body: Any = None,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> ApiResult:
         if not self.cfg.enabled:
             return self._not_configured()
@@ -211,9 +212,9 @@ class AstrBotClient:
         self,
         path: str,
         *,
-        files: Mapping[str, Tuple[str, bytes, str]],
-        data: Optional[Mapping[str, Any]] = None,
-        timeout: Optional[float] = None,
+        files: Mapping[str, tuple[str, bytes, str]],
+        data: Mapping[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> ApiResult:
         """
         [RUNTIME P2] multipart/form-data POST (install/upload).

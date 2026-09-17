@@ -1,4 +1,5 @@
 """IMPORT_TABLE single-source checks for docs MCP validate_import."""
+
 from __future__ import annotations
 
 from runtime.contracts import IMPORT_TABLE, fuzzy_import_symbols, lookup_import

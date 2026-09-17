@@ -4,6 +4,7 @@ The MCP-client relay itself is exercised end-to-end in an integration test
 (hosts the plugin SSE server on FastAPI and connects via mcp client); here we
 cover the pure logic that does not need a live AstrBot.
 """
+
 from __future__ import annotations
 
 import asyncio

@@ -1,4 +1,5 @@
 """Unit tests for install helpers: zip main hash, component fingerprint, stale detect."""
+
 from __future__ import annotations
 
 import io
@@ -96,27 +97,44 @@ class TestStaleFailedDetection:
                 self.error = error
                 self.error_kind = error_kind
                 self.status_code = status_code
+
             def to_dict(self):
-                return {"ok": self.ok, "status_code": self.status_code,
-                        "error": self.error, "error_kind": self.error_kind, "data": self.data}
+                return {
+                    "ok": self.ok,
+                    "status_code": self.status_code,
+                    "error": self.error,
+                    "error_kind": self.error_kind,
+                    "data": self.data,
+                }
 
         class FakeClient:
             def get(self, path, **kw):
                 calls.append(("get", path))
                 if path == "/api/v1/plugins/failed":
-                    return FakeResp(data={"status": "ok", "data": {"astrbot_plugin_x": {"name": "astrbot_plugin_x", "error": "boom"}}})
+                    return FakeResp(
+                        data={
+                            "status": "ok",
+                            "data": {
+                                "astrbot_plugin_x": {"name": "astrbot_plugin_x", "error": "boom"}
+                            },
+                        }
+                    )
                 if path.startswith("/api/v1/plugins/astrbot_plugin_x"):
                     return FakeResp(data={"status": "ok", "data": {}})  # present=false
                 return FakeResp(data={"status": "ok", "data": {}})
+
             def delete(self, path, json_body=None, **kw):
                 calls.append(("delete", path, json_body))
                 return FakeResp(data={"status": "ok", "message": "ok"})
+
             def post(self, path, json_body=None, **kw):
                 calls.append(("post", path))
                 return FakeResp(data={"status": "ok", "data": {"name": "astrbot_plugin_x"}})
+
             def patch(self, path, json_body=None, **kw):
                 calls.append(("patch", path))
                 return FakeResp(data={"status": "ok", "data": {}})
+
             def post_multipart(self, path, files=None, data=None, **kw):
                 calls.append(("upload",))
                 return FakeResp(data={"status": "ok", "data": {"name": "astrbot_plugin_x"}})
@@ -124,6 +142,7 @@ class TestStaleFailedDetection:
         monkeypatch.setattr("runtime.tools_install.AstrBotClient", lambda cfg=None: FakeClient())
 
         from runtime.tools_install import astrbot_plugin_install_path
+
         root = tmp_path / "astrbot_plugin_x"
         root.mkdir()
         (root / "metadata.yaml").write_text("name: astrbot_plugin_x\nversion: 0.1.0\nauthor: t\n")

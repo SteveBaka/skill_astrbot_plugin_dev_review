@@ -15,7 +15,6 @@ Usage:
 import json
 import os
 import sys
-from typing import Dict, List
 
 from mcp.server.fastmcp import FastMCP
 
@@ -36,9 +35,10 @@ mcp = FastMCP("skill-astrbot-plugin")
 
 # ── Doc Discovery ──────────────────────────────────────────────
 
-def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
+
+def discover_docs(root_path: str) -> dict[str, dict[str, str]]:
     """Auto-discover .md docs organized by subdirectory (category)."""
-    index: Dict[str, Dict[str, str]] = {}
+    index: dict[str, dict[str, str]] = {}
     skip = {"mcp", ".git", "__pycache__", "node_modules", ".DS_Store", ".venv"}
 
     for entry in sorted(os.listdir(root_path)):
@@ -48,7 +48,7 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
         if not os.path.isdir(full):
             continue
 
-        docs: Dict[str, str] = {}
+        docs: dict[str, str] = {}
         for fname in sorted(os.listdir(full)):
             if not fname.endswith(".md"):
                 continue
@@ -56,7 +56,7 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
             fpath = os.path.join(full, fname)
             desc = f"{entry}/{doc_id}"
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
+                with open(fpath, encoding="utf-8") as f:
                     for line in f:
                         s = line.strip()
                         if s.startswith("# "):
@@ -72,7 +72,7 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
             index[entry] = docs
 
     # Root-level .md files
-    root_docs: Dict[str, str] = {}
+    root_docs: dict[str, str] = {}
     for fname in sorted(os.listdir(root_path)):
         if fname.endswith(".md") and os.path.isfile(os.path.join(root_path, fname)):
             doc_id = fname[:-3]
@@ -92,12 +92,12 @@ def discover_docs(root_path: str) -> Dict[str, Dict[str, str]]:
 # window — so a file-read failure surfaces at startup instead of timing out the
 # first tool call.
 _DOCS_INDEX_JSON = os.path.join(SCRIPT_DIR, "docs_index.json")
-_docs_cache: Dict[str, Dict[str, str]] | None = None
+_docs_cache: dict[str, dict[str, str]] | None = None
 
 
-def _load_docs_index() -> Dict[str, Dict[str, str]]:
+def _load_docs_index() -> dict[str, dict[str, str]]:
     try:
-        with open(_DOCS_INDEX_JSON, "r", encoding="utf-8") as f:
+        with open(_DOCS_INDEX_JSON, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
             return data
@@ -108,7 +108,7 @@ def _load_docs_index() -> Dict[str, Dict[str, str]]:
     return discover_docs(SKILL_ROOT)
 
 
-def _get_docs_index() -> Dict[str, Dict[str, str]]:
+def _get_docs_index() -> dict[str, dict[str, str]]:
     global _docs_cache
     if _docs_cache is None:
         _docs_cache = _load_docs_index()
@@ -127,6 +127,7 @@ def _get_categories() -> list:
 
 def _get_total_docs() -> int:
     return sum(len(v) for v in _get_docs_index().values())
+
 
 # Import reference: single source mcp/runtime/contracts.py (checklist §1 + FIX-00)
 def _load_import_table():
@@ -172,6 +173,7 @@ def _resolve_path(category: str, doc_name: str) -> str:
 
 # ── Tools ──────────────────────────────────────────────────────
 
+
 @mcp.tool()
 def get_skill_info() -> str:
     """Get an overview of the AstrBot Skill: categories, doc count, available review rules, and quick-start guide."""
@@ -200,7 +202,9 @@ def get_skill_info() -> str:
         count = len(_get_docs_index()[cat])
         lines.append(f"- **{cat}** ({count} docs)")
     lines.append("")
-    lines.append("Use `list_docs` to see all documents, `get_doc` to read one, `search_docs` to search.")
+    lines.append(
+        "Use `list_docs` to see all documents, `get_doc` to read one, `search_docs` to search."
+    )
     return "\n".join(lines)
 
 
@@ -215,7 +219,9 @@ def list_docs(category: str = "") -> str:
             lines.append(f"- `{doc_id}`: {desc}")
         return "\n".join(lines)
     else:
-        lines = [f"# AstrBot Skill Docs ({len(_get_categories())} categories, {_get_total_docs()} docs)\n"]
+        lines = [
+            f"# AstrBot Skill Docs ({len(_get_categories())} categories, {_get_total_docs()} docs)\n"
+        ]
         for c in _get_categories():
             lines.append(f"## {c}")
             for doc_id, desc in _get_docs_index()[c].items():
@@ -229,17 +235,56 @@ def get_doc(category: str, doc_name: str) -> str:
     """Fetch a specific document by category and name. Use list_docs to discover available categories and documents."""
     fpath = _resolve_path(category, doc_name)
     if not os.path.exists(fpath):
-        avail = ", ".join(_get_docs_index().get(category, {}).keys()) if category in _get_docs_index() else "N/A"
+        avail = (
+            ", ".join(_get_docs_index().get(category, {}).keys())
+            if category in _get_docs_index()
+            else "N/A"
+        )
         return f"Not found: {category}/{doc_name}.md\nAvailable in '{category}': {avail}"
-    with open(fpath, "r", encoding="utf-8") as f:
+    with open(fpath, encoding="utf-8") as f:
         return f.read()
 
 
 @mcp.tool()
 def search_docs(query: str) -> str:
-    """Search all documents for a keyword and return matching context with surrounding lines."""
-    q = query.lower()
-    results: List[str] = []
+    """Search skill markdown docs.
+
+    Matching: multi-word queries use **token AND** (every whitespace-separated
+    token must appear somewhere in the file, case-insensitive). Single tokens
+    use exact substring match. Scope: each category directory's top-level
+    `*.md` (not recursive into type*/ plugin examples).
+    """
+    raw = (query or "").strip()
+    if not raw:
+        return "Empty query."
+    tokens = [t for t in raw.lower().split() if t]
+    if not tokens:
+        return f"No documents found matching '{query}'"
+
+    def _match(content_low: str) -> bool:
+        if len(tokens) == 1:
+            return tokens[0] in content_low
+        return all(tok in content_low for tok in tokens)
+
+    def _hit_lines(content: str) -> list[str]:
+        lines = content.split("\n")
+        matched: list[str] = []
+        seen = set()
+        for i, line in enumerate(lines):
+            low = line.lower()
+            hit = any(tok in low for tok in tokens)
+            if not hit:
+                continue
+            start = max(0, i - 2)
+            end = min(len(lines), i + 3)
+            for j in range(start, end):
+                if j not in seen:
+                    matched.append(lines[j])
+                    seen.add(j)
+            matched.append("---")
+        return matched
+
+    results: list[str] = []
     for cat in _get_categories():
         cat_path = SKILL_ROOT if cat == "__root__" else os.path.join(SKILL_ROOT, cat)
         if not os.path.isdir(cat_path):
@@ -249,26 +294,19 @@ def search_docs(query: str) -> str:
                 continue
             fpath = os.path.join(cat_path, fname)
             try:
-                with open(fpath, "r", encoding="utf-8") as f:
+                with open(fpath, encoding="utf-8") as f:
                     content = f.read()
             except Exception:
                 continue
-            if q not in content.lower():
+            if not _match(content.lower()):
                 continue
-            matched: List[str] = []
-            all_lines = content.split("\n")
-            for i, line in enumerate(all_lines):
-                if q in line.lower():
-                    start = max(0, i - 2)
-                    end = min(len(all_lines), i + 3)
-                    matched.extend(all_lines[start:end])
-                    matched.append("---")
+            matched = _hit_lines(content)
             if matched:
                 doc_id = fname[:-3]
                 prefix = f"{cat}/" if cat != "__root__" else ""
                 results.append(f"### {prefix}{doc_id}\n" + "\n".join(matched[:20]))
     if not results:
-        return f"No documents found matching '{query}'"
+        return f"No documents found matching '{query}' (token AND)"
     return "\n\n".join(results[:5])
 
 
@@ -315,6 +353,7 @@ def get_review_checklist(file_type: str = "main") -> str:
 - [ ] If config used: `__init__(self, context, config: AstrBotConfig)` + `self.config = config`
 - [ ] All handlers are `async def`
 - [ ] All `@filter.command` have docstrings
+- [ ] **Command args (H1-B)**: structured → annotated typed params (`a:int`); free-text → message_str remainder (strip command prefix); no untyped free-text extras
 - [ ] `@filter.command_group` uses function pattern (`def math(): pass`), NOT class
 - [ ] `filter` from `astrbot.api.event`, `logger` from `astrbot.api`
 - [ ] No `yield` in `on_llm_request`/`on_llm_response`/`on_decorating_result`/`after_message_sent`
@@ -347,7 +386,7 @@ def get_review_checklist(file_type: str = "main") -> str:
 - [ ] `desc` OR `description`: non-empty, NOT both
 - [ ] `version`: non-empty (e.g. `v1.0.0`)
 - [ ] `author`: non-empty
-- [ ] `repo`: valid GitHub URL
+- [ ] `repo`: empty OK on local/first scaffold; valid GitHub URL required when publishing to marketplace
 
 ## Optional Fields
 - `display_name`, `short_desc`, `astrbot_version`, `support_platforms`, `tags`
@@ -392,6 +431,7 @@ except Exception as _runtime_exc:  # noqa: BLE001 — never block docs MCP
 
 # ── Entry Point ────────────────────────────────────────────────
 
+
 def main():
     if TRANSPORT == "sse":
         import uvicorn
@@ -403,7 +443,9 @@ def main():
 
         async def handle_sse(request):
             async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
-                await mcp._mcp_server.run(streams[0], streams[1], mcp._mcp_server.create_initialization_options())
+                await mcp._mcp_server.run(
+                    streams[0], streams[1], mcp._mcp_server.create_initialization_options()
+                )
 
         async def handle_messages(request):
             await sse.handle_post_message(request.scope, request.receive, request._send)

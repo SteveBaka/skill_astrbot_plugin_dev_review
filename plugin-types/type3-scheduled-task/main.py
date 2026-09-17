@@ -1,6 +1,7 @@
 import datetime
+
 from astrbot.api import logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
 
@@ -98,9 +99,7 @@ class DailyReportPlugin(Star):
             jid = self._job_attr(job, "job_id", "id", default="?")
             expr = self._job_attr(job, "cron_expression", "cron", "expression", default="?")
             enabled = self._job_attr(job, "enabled", default=True)
-            lines.append(
-                f"- {name} | id={jid} | {expr} | {'enabled' if enabled else 'disabled'}"
-            )
+            lines.append(f"- {name} | id={jid} | {expr} | {'enabled' if enabled else 'disabled'}")
         yield event.plain_result("\n".join(lines))
 
     @filter.command("cron_delete")

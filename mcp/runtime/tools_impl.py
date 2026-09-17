@@ -21,7 +21,7 @@ Analysis of expected outcomes (for operators):
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import AstrBotClient
 from .config import load_config
@@ -39,7 +39,7 @@ def astrbot_runtime_info(probe: bool = True) -> str:
     response size — proves LAN path + auth without mutating state.
     """
     cfg = load_config()
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "phase": "P0+P1",
         "purpose": "stable_connection + plugin_manage(reload/enable/config)",
         "config": cfg.public_dict(),
@@ -69,6 +69,7 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             "astrbot_plugin_log_level_get",
             "astrbot_plugin_log_level_set",
             "astrbot_plugin_failed_remove",
+            "astrbot_version_check",
         ],
         "log_bridge": (
             "astrbot_logs_history/tail/search ENABLED ONLY when "
@@ -109,7 +110,7 @@ def astrbot_runtime_info(probe: bool = True) -> str:
     client = AstrBotClient(cfg)
     # Lightweight list call — same auth path as other plugin tools
     result = client.get("/api/v1/plugins", params={"include_reserved": True})
-    probe_info: Dict[str, Any] = result.to_dict()
+    probe_info: dict[str, Any] = result.to_dict()
     # Truncate large plugin lists for readability in agent context
     if result.ok and isinstance(result.data, dict):
         # SuccessEnvelope often {status, message, data: ...} — keep structure, summarize list
@@ -125,7 +126,9 @@ def astrbot_runtime_info(probe: bool = True) -> str:
             }
             # Drop full list from probe to keep tool output small
             probe_info["data"] = {
-                "envelope_keys": list(result.data.keys()) if isinstance(result.data, dict) else None,
+                "envelope_keys": list(result.data.keys())
+                if isinstance(result.data, dict)
+                else None,
                 "note": "full list via astrbot_plugin_list",
                 "plugin_count": len(data),
             }
@@ -156,11 +159,11 @@ def astrbot_runtime_info(probe: bool = True) -> str:
 
 def astrbot_plugin_list(
     include_reserved: bool = True,
-    enabled: Optional[bool] = None,
+    enabled: bool | None = None,
 ) -> str:
     """GET /api/v1/plugins — list installed plugins (read-only)."""
     client = AstrBotClient()
-    params: Dict[str, Any] = {"include_reserved": include_reserved}
+    params: dict[str, Any] = {"include_reserved": include_reserved}
     if enabled is not None:
         params["enabled"] = enabled
     result = client.get("/api/v1/plugins", params=params)

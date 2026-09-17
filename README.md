@@ -22,15 +22,15 @@ from astrbot.api.logger import logger
 from astrbot.api import logger
 ```
 
-本 Skill 内置 **31 条 import 校验表** 和 **30 个自动修复模式（FIX-00 ~ FIX-29）**，让 AI 生成代码时尽量杜绝以下常见问题：
+本 Skill 内置 **31 条 import 校验表** 和 **39 个自动修复模式（FIX-00 ~ FIX-38）**，让 AI 生成代码时尽量杜绝以下常见问题：
 
-- **废弃 API 误用**：`on_keyword`/`on_full_match`/`on_regex` 在 v4.x 已移除，需改用 `event_message_type` + Python 匹配
+- **不存在的 API**：`on_keyword`/`on_full_match`/`on_regex` 从未存在于 AstrBot（已对 tag 源码/全部 changelog/PR 核验），需改用 `event_message_type` + Python 匹配
 - **适配器配置冲突**：官方 `register_platform_adapter` 会自动注入 `id`/`enable`，`default_config_tmpl` 里不要重复声明，也不要放 `_conf_schema.json`
 - **dataclass 可变默认值**：`parameters: dict = {...}` 必须改为 `field(default_factory=lambda: {...})`
 - **配置注入缺失**：`__init__` 必须声明 `config: AstrBotConfig` 参数
 - **依赖声明遗漏**：requirements.txt 交叉检查规则
 - **main.py 膨胀**：模块拆分指南（`references/modular-split.md`）
-- **命令参数绑定**：`event.message_str` 取代函数参数，避免 `got multiple values` 错误
+- **命令参数策略（H1-B）**：官方 typed 参合法（4.27.4 实测）；结构化用注解参数（`a:int`），自由文本用 `event.message_str` **并自行剥掉指令前缀**；禁止无类型自由文本参数
 - **ToolExecResult 兼容性**：Python 3.12 下直接返回 `str` 即可
 - **未使用 import / 死代码**：LLM 常生成不需要的 import 和未使用的变量
 - **StarTools 调用限制**：`get_data_dir()` 必须在 `Star` 子类中调用
@@ -45,11 +45,11 @@ from astrbot.api import logger
 
 > ## ⚠️ 开始之前：确认你的 AstrBot 版本
 >
-> 本 Skill 的规则与示例以 **≥4.27.0** 为目标（也兼容 ≥4.16 的地板）。**动手生成插件前**：
+> 本 Skill 的规则与示例以 **≥4.27.0** 为目标（skill 生成插件的 `astrbot_version` 默认 **`">=4.27,<5"`**）。官方文档教学示例仍常见 `">=4.16,<5"`（生态地板）——**不要**把该宽松范围写进使用 skill 4.27+ 契约的脚手架。**动手生成插件前**：
 >
 > 1. **先向用户确认**其 AstrBot 实际版本（`Dashboard 设置 → 关于` 或 `astrbot --version`）。
 > 2. **新版（≥4.27.0）**：按 Skill 当前规则与示例写即可。
-> 3. **旧版**：以用户当前版本为准——`metadata.yaml` 的 `astrbot_version` 写成兼容范围（如 `">=4.16"`），**不要**使用旧版不支持的 API（如按插件日志级别、failed 清理、API Key 子权限等）。
+> 3. **用户核心较旧**：确认后**收窄 API 使用**并写入相匹配的 `astrbot_version`，或升级核心；**不要**在 skill 新契约插件上假装 `">=4.16"` 可载入。4.28 适配完成且模板依赖 4.28-only API 后，再把脚手架默认升到 `">=4.28,<5"`。
 > 4. 版本不确定时，先问，不要默认假设新版。
 
 ---
@@ -336,7 +336,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 规则 | 说明 |
 |------|------|
 | 身份门禁 | 脚手架前必须确认插件名 `astrbot_plugin_*` 与作者，未确认不得创建目录 |
-| **版本确认** | 生成前先确认用户 AstrBot 版本（新版 ≥4.27.0 / 旧版按其版本写 `astrbot_version`），避免用不支持的新 API |
+| **版本确认** | skill 脚手架默认 `astrbot_version: ">=4.27,<5"`（硬载入闸）；官方教学示例可为 `>=4.16,<5`；4.28 破坏性适配后再升 `>=4.28,<5` |
 | 官方文档优先 | 以 `star/plugin-new.md` + `star/guides/*` 为准；**禁止**旧 `plugin.md` 当权威 |
 | 两阶段审查 | 首次输出：Phase A 运行时全文校对；功能完成/用户审核：Phase B 全文准确·安全·完整 |
 | 高风险操作 | git commit/push/force、大规模改写已运行代码、批量删除 — 须用户明确允许 |
@@ -350,13 +350,13 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 配置 schema dict | ≥4.26.8 核心映射 dict 默认值；仍避免可变默认共享陷阱 |
 | 插件日志级别 | ≥4.27.0 可按插件设置 DEBUG/INFO/… 或跟随全局 |
 | docstring | 所有 `@filter.command` 必须有 docstring |
-| 参数绑定 | 用 `event.message_str.strip()` 获取用户输入，不要用函数参数 |
+| 参数策略 H1-B | 结构化→注解 typed 参；自由文本→message_str 剥指令前缀；禁 untyped 自由文本参 |
 | command_group | 必须用函数模式 `def math(): pass`，不能用 class |
 | Tool 返回值 | `Tool.call()` 必须返回 `str`，不要用 `ToolExecResult` |
 | dataclass 字段 | dict/list 字段必须用 `field(default_factory=...)`，不能直接写字面量 |
-| 废弃 API | `on_keyword`/`on_full_match`/`on_regex` 已移除，用 `event_message_type` 替代 |
+| 不存在的 API | `on_keyword`/`on_full_match`/`on_regex` 从未存在（tag/日志/PR 三重核验），用 `event_message_type` 替代 |
 | 配置读取 | `__init__` 需接收 `config: AstrBotConfig` 并赋值 `self.config = config` |
-| 首次生成 | metadata/conf_schema/README 跟随用户语言；`repo` 留空 |
+| 首次生成 | metadata/conf_schema/README 跟随用户语言；本地/首代 `repo` 可留空，上架市场前必须填有效 GitHub URL |
 | 代码清理 | 审核前移除未使用 import、死代码、重复定义 |
 | 网络库 | 必须用 `aiohttp`/`httpx`（异步），不能用 `requests` |
 | 数据存储 | 持久化数据存 `data/` 目录（`StarTools.get_data_dir()`），不存插件目录 |
@@ -447,7 +447,7 @@ python3 mcp/scripts/error_kb.py --store mcp/.error_kb.json propose \
 
 ## 版本要求
 
-- **AstrBot**：skill 规则兼容 **≥4.16**；开发/联调建议 **≥4.27.0**（按插件日志级别、failed 插件清理 API、API Key 子权限、Cloud 市场、dict 配置默认值等）。**生成插件前先确认用户实际版本。**（v4.27.2 为纯维护补丁，无 API 变化）
+- **AstrBot**：skill 生成契约与脚手架默认 **`astrbot_version: ">=4.27,<5"`**（H1-B / api.web / notes 已在 **4.27.4** 验证）。官方教学范围 `>=4.16,<5` 仅适用于**未使用** skill 4.27+ 契约的极简插件。**4.28.x 适配完成后**：若模板依赖 4.28-only API，再将默认升至 `">=4.28,<5"` 并重跑 smoke。（v4.27.2 为纯维护补丁，无 API 变化）
 - Python：工具链 **≥3.10**；官方文档侧倾向 **3.12**（推荐）
 - OpenAPI：浏览 [Scalar](https://docs.astrbot.app/scalar.html)；机器可读 [openapi.json](https://docs.astrbot.app/openapi.json)。本地可用 `mcp/scripts/check_openapi_drift.py` 与快照 diff（**已验证 4.26.8 与当前 145 paths 无路径漂移**；`PUT .../log-level` 已在核心源码但**尚未**进入公开 openapi.json）
 
@@ -518,7 +518,7 @@ skill_astrbot_plugin_dev_review/
 │   ├── metadata-validation.md            # 结构校验（含 requirements.txt 交叉检查）
 │   ├── main-file-checklist.md            # main.py 检查（import 表由 contracts.py 维护）
 │   ├── general-file-checklist.md         # 通用代码审查
-│   └── auto-fix-guide.md                 # 30 个修复模式（FIX-00 ~ FIX-29）
+│   └── auto-fix-guide.md                 # 39 个修复模式（FIX-00 ~ FIX-38）
 │
 ├── plugin-types/                         # 插件类型示例（6 种 + script/ 基础模板）
 │   ├── README.md                         # 类型选择指南 + 决策树

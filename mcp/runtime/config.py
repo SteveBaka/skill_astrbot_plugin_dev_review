@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 
@@ -75,7 +75,7 @@ class RuntimeConfig:
         """Safe for agent/UI: no token value, only presence flags."""
         host = ""
         scheme = ""
-        port: Optional[int] = None
+        port: int | None = None
         parse_ok = False
         parse_error = ""
         try:
@@ -177,7 +177,7 @@ class RuntimeConfig:
         }
 
 
-def mutation_denied_payload(action: str) -> Dict[str, Any]:
+def mutation_denied_payload(action: str) -> dict[str, Any]:
     """
     [RUNTIME P1] Structured refusal when write tools are gated off.
 
@@ -193,8 +193,7 @@ def mutation_denied_payload(action: str) -> Dict[str, Any]:
         "error_kind": "mutations_disabled",
         "action": action,
         "hint": (
-            "Read-only tools (list/get/failed/config_get) still work. "
-            "Docs MCP is unaffected."
+            "Read-only tools (list/get/failed/config_get) still work. Docs MCP is unaffected."
         ),
     }
 

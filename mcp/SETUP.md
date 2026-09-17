@@ -100,7 +100,7 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `get_skill_info` | Get skill overview (categories, doc count, quick start) |
 | `list_docs` | List all categories and documents |
 | `get_doc(category, doc_name)` | Fetch a specific document |
-| `search_docs(query)` | Search all documents by keyword |
+| `search_docs(query)` | Search docs — multi-word queries use **token AND**; single token = substring; top-level `*.md` per category |
 | `validate_import(symbol)` | Check if an AstrBot import path is correct |
 | `get_review_checklist(file_type)` | Get review checklist (main/general/metadata/adapter) |
 | `astrbot_runtime_info` | **[P0]** Config + optional OpenAPI probe (no token leak) |
@@ -385,8 +385,8 @@ Confirm name/author first. Star: BUSINESS → review → install → **user Dash
 
 | Severity | Meaning | Examples |
 |----------|---------|----------|
-| error | breaks at import/load | FIX-00 wrong imports, FIX-04 sync requests, FIX-20 dataclass mutable defaults, FIX-21 deprecated filter APIs, FIX-01 missing super().__init__, SYNTAX |
-| warning | mandatory-rule violation | FIX-02 handler params, FIX-17 missing docstring, FIX-26 namespace, FIX-27 StarTools context, META-03/04 naming/PEP440, REQ-01 undeclared deps |
+| error | breaks at import/load | FIX-00 wrong imports, FIX-04 sync requests, FIX-20 dataclass mutable defaults, FIX-21 unknown/non-existent filter attrs (`on_keyword` never existed), FIX-01 missing super().__init__, SYNTAX |
+| warning | mandatory-rule violation | FIX-02 command arg policy (untyped/free-text extras; typed structured = info), FIX-17 missing docstring, FIX-26 namespace, FIX-27 StarTools context, META-03/04 naming/PEP440, REQ-01 undeclared deps |
 | info | hygiene | FIX-23 unused imports, FIX-22 config-injection hint |
 
 Recommended order: `astrbot_review_path` → fix errors → `astrbot_plugin_install_path` → `astrbot_smoke_suite`. Judgment-level review (architecture, logic) stays with the Phase A/B LLM workflow — this tool only automates the statically decidable subset.
@@ -481,6 +481,11 @@ system-scope workaround is attempted (that scope is not grantable to API keys by
   new `install/git`, `conversations*`, `sessions*`; removed `files/tokens/{id}`.
   **v4.27.2 (2026-08-05):** pure maintenance/fix patch — live spec still 162 paths,
   no API/scope changes; no skill update needed.
+  **Skill validation refresh (2026-09-17, running core 4.27.4):** live spec **163** paths;
+  drift `+/api/v1/conversations/filter-options` (non-runtime); runtime-used 21 endpoints
+  unaffected; local snapshot refreshed with `--update`. Next-core prep: keep following
+  official `docs.astrbot.app/openapi.json` + public `astrbot.api.*` surfaces — do not
+  hardcode Quart/core-only paths in new templates.
 - **Error-fingerprint KB → auto-fix-guide** (`mcp/runtime/error_fingerprint.py` + `mcp/scripts/error_kb.py`):
   captures **desensitized** error shapes (paths/UUID/token/plugin-id/line numbers
   stripped) during regression/smoke; proposes new `auto-fix-guide.md` FIX entries

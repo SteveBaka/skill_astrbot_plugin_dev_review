@@ -1,0 +1,55 @@
+# Skill-wide ruff (official plugin principle: format with ruff before submit)
+# Primary runtime quality gate: mcp/ (contracts, review, scaffold, MCP server).
+# Example plugins (plugin-types/, script/) keep official crash-safety patterns.
+
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+  "**/.venv/**",
+  "**/__pycache__/**",
+  "**/.pytest_cache/**",
+  "**/.ruff_cache/**",
+  ".kilo/**",
+]
+
+[lint]
+select = [
+  "E",
+  "W",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+ignore = [
+  "E501",
+  "B008",
+]
+
+[lint.per-file-ignores]
+"mcp/tests/*" = ["E402"]
+# AstrBot example / companion plugins: official docs require robust try/except;
+# teaching skeletons are not production services. Structural gate stays on mcp/.
+"plugin-types/**" = [
+  "BLE001",
+  "EXE002",
+  "S110",
+  "SIM102",
+  "SIM103",
+  "DTZ005",
+  "RUF013",
+]
+"script/**" = [
+  "BLE001",
+  "EXE002",
+  "S110",
+  "SIM102",
+  "SIM103",
+  "DTZ005",
+  "RUF012",
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

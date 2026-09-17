@@ -18,7 +18,7 @@ from __future__ import annotations
 import copy
 import json
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .client import AstrBotClient, encode_plugin_id
 from .config import load_config, mutation_denied_payload
@@ -39,7 +39,7 @@ def _envelope_data(result_data: Any) -> Any:
 def post_install_dashboard_hints(
     plugin_id: str,
     plugin_type: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Privacy-safe install follow-up: text only, no config reads.
 
@@ -67,7 +67,7 @@ def post_install_dashboard_hints(
         "Agent will not auto-read plugin or AstrBot configs unless you name the keys to inspect.",
     ]
 
-    by_type: Dict[str, List[str]] = {
+    by_type: dict[str, list[str]] = {
         "command": [
             "Plugins → enable the plugin → try commands in WebChat under plugin_dev_skill.",
             "Admin-only commands need an admin account in WebChat.",
@@ -119,7 +119,7 @@ def astrbot_providers_brief() -> str:
     client = AstrBotClient()
     # Prefer top-level providers list
     result = client.get("/api/v1/providers")
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": result.ok,
         "purpose": "pick provider_id for plugin_dev_skill (user choice required)",
         "privacy": "ids/names only; secrets never requested",
@@ -137,9 +137,14 @@ def astrbot_providers_brief() -> str:
         }
         if src.ok:
             data = _envelope_data(src.data)
-            items = data if isinstance(data, list) else (
-                data.get("items") or data.get("list") or data.get("sources") or []
-                if isinstance(data, dict) else []
+            items = (
+                data
+                if isinstance(data, list)
+                else (
+                    data.get("items") or data.get("list") or data.get("sources") or []
+                    if isinstance(data, dict)
+                    else []
+                )
             )
             brief = []
             for it in items if isinstance(items, list) else []:
@@ -160,16 +165,12 @@ def astrbot_providers_brief() -> str:
         return _dumps(out)
 
     data = _envelope_data(result.data)
-    items: List[Any]
+    items: list[Any]
     if isinstance(data, list):
         items = data
     elif isinstance(data, dict):
         items = (
-            data.get("providers")
-            or data.get("items")
-            or data.get("list")
-            or data.get("data")
-            or []
+            data.get("providers") or data.get("items") or data.get("list") or data.get("data") or []
         )
         if not isinstance(items, list):
             items = []
@@ -201,7 +202,7 @@ def astrbot_config_profiles_brief() -> str:
     """List configuration profile names/ids only (no full config bodies)."""
     client = AstrBotClient()
     result = client.get("/api/v1/config-profiles")
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": result.ok,
         "privacy": "names/ids only — full config not fetched",
         "plugin_dev_skill_name": PROFILE_NAME,
@@ -231,9 +232,7 @@ def astrbot_config_profiles_brief() -> str:
     return _dumps(out)
 
 
-def _find_profile(
-    client: AstrBotClient, name: str
-) -> Optional[Dict[str, str]]:
+def _find_profile(client: AstrBotClient, name: str) -> dict[str, str] | None:
     result = client.get("/api/v1/config-profiles")
     if not result.ok:
         return None
@@ -251,12 +250,12 @@ def _find_profile(
 
 
 def _build_dev_config(
-    default_config: Dict[str, Any],
+    default_config: dict[str, Any],
     *,
     plugin_id: str,
     provider_id: str,
-    extra_plugins: List[str],
-) -> Dict[str, Any]:
+    extra_plugins: list[str],
+) -> dict[str, Any]:
     """
     Deep-copy default and apply minimal test overrides.
 
@@ -333,11 +332,8 @@ def astrbot_ensure_plugin_dev_skill(
                 "will_create": {
                     "name": PROFILE_NAME,
                     "base": "default config deep copy",
-                    "plugin_set": [pid] + [
-                        x.strip()
-                        for x in (extra_plugins or "").split(",")
-                        if x.strip()
-                    ],
+                    "plugin_set": [pid]
+                    + [x.strip() for x in (extra_plugins or "").split(",") if x.strip()],
                     "default_provider_id": provid,
                 },
                 "dashboard_hint": (
@@ -350,7 +346,7 @@ def astrbot_ensure_plugin_dev_skill(
 
     extras = [x.strip() for x in (extra_plugins or "").split(",") if x.strip()]
     client = AstrBotClient(cfg)
-    steps: Dict[str, Any] = {}
+    steps: dict[str, Any] = {}
 
     existing = _find_profile(client, PROFILE_NAME)
     if existing:
@@ -382,9 +378,7 @@ def astrbot_ensure_plugin_dev_skill(
                         "existing": existing,
                     }
                 )
-            del_r = client.delete(
-                f"/api/v1/config-profiles/{encode_plugin_id(existing['id'])}"
-            )
+            del_r = client.delete(f"/api/v1/config-profiles/{encode_plugin_id(existing['id'])}")
             steps["delete_existing"] = {
                 "ok": del_r.ok,
                 "status_code": del_r.status_code,
@@ -490,7 +484,7 @@ def astrbot_ensure_plugin_dev_skill(
             new_id = found.get("id")
             steps["resolve_id"] = found
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": create.ok,
         "profile_name": PROFILE_NAME,
         "profile_id": new_id,

@@ -2,10 +2,10 @@
 
 All HTTP via httpx.MockTransport; no real AstrBot required.
 """
+
 from __future__ import annotations
 
 import httpx
-
 from runtime.client import (
     AstrBotClient,
     _build_headers,

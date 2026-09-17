@@ -1,12 +1,12 @@
 import aiohttp
 from astrbot.api import logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
+from astrbot.core.agent.run_context import ContextWrapper
+from astrbot.core.agent.tool import FunctionTool
+from astrbot.core.astr_agent_context import AstrAgentContext
 from pydantic import Field
 from pydantic.dataclasses import dataclass
-from astrbot.core.agent.tool import FunctionTool
-from astrbot.core.agent.run_context import ContextWrapper
-from astrbot.core.astr_agent_context import AstrAgentContext
 
 
 @dataclass
@@ -28,9 +28,7 @@ class WeatherTool(FunctionTool[AstrAgentContext]):
         }
     )
 
-    async def call(
-        self, context: ContextWrapper[AstrAgentContext], **kwargs
-    ) -> str:
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> str:
         city = kwargs.get("city", "")
         if not city:
             return "Error: Missing 'city' parameter"

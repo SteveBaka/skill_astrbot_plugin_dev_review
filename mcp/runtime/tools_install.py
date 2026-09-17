@@ -30,7 +30,7 @@ import json
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .client import AstrBotClient, encode_plugin_id
 from .config import load_config, mutation_denied_payload
@@ -45,15 +45,14 @@ def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _main_py_hash_from_zip(zip_bytes: bytes) -> Optional[str]:
+def _main_py_hash_from_zip(zip_bytes: bytes) -> str | None:
     """Short fingerprint of main.py inside the packed ZIP (content identity)."""
     try:
         with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
             mains = [
                 n
                 for n in zf.namelist()
-                if n.replace("\\", "/").endswith("/main.py")
-                or n.replace("\\", "/") == "main.py"
+                if n.replace("\\", "/").endswith("/main.py") or n.replace("\\", "/") == "main.py"
             ]
             if not mains:
                 return None
@@ -64,9 +63,9 @@ def _main_py_hash_from_zip(zip_bytes: bytes) -> Optional[str]:
         return None
 
 
-def _components_fingerprint(components: Any) -> List[Dict[str, str]]:
+def _components_fingerprint(components: Any) -> list[dict[str, str]]:
     """Stable, non-secret snapshot of plugin components for stale-install detection."""
-    out: List[Dict[str, str]] = []
+    out: list[dict[str, str]] = []
     if not isinstance(components, list):
         return out
     for c in components:
@@ -85,9 +84,9 @@ def _components_fingerprint(components: Any) -> List[Dict[str, str]]:
     return out
 
 
-def _plugin_get_snapshot(client: AstrBotClient, plugin_id: str) -> Dict[str, Any]:
+def _plugin_get_snapshot(client: AstrBotClient, plugin_id: str) -> dict[str, Any]:
     got = client.get(f"/api/v1/plugins/{encode_plugin_id(plugin_id)}")
-    snap: Dict[str, Any] = {
+    snap: dict[str, Any] = {
         "ok": got.ok,
         "status_code": got.status_code,
         "error": got.error,
@@ -107,9 +106,7 @@ def _plugin_get_snapshot(client: AstrBotClient, plugin_id: str) -> Dict[str, Any
     return snap
 
 
-def _components_look_unchanged(
-    before: Optional[Dict[str, Any]], after: Optional[Dict[str, Any]]
-) -> bool:
+def _components_look_unchanged(before: dict[str, Any] | None, after: dict[str, Any] | None) -> bool:
     """True when both snapshots exist and component fingerprints are identical."""
     if not before or not after:
         return False
@@ -125,7 +122,7 @@ def _components_look_unchanged(
     return b == a
 
 
-def _uninstall_keep_all(client: AstrBotClient, plugin_id: str) -> Dict[str, Any]:
+def _uninstall_keep_all(client: AstrBotClient, plugin_id: str) -> dict[str, Any]:
     """
     Uninstall preserving config + data (OpenAPI delete_*=false).
 
@@ -148,7 +145,7 @@ SAME_NAME_CONFLICT_HINT = (
 )
 
 
-def _looks_like_same_name_conflict(upload_ok: bool, upload_data: Any, error: Optional[str]) -> bool:
+def _looks_like_same_name_conflict(upload_ok: bool, upload_data: Any, error: str | None) -> bool:
     """Heuristic: HTTP error body mentions already installed / exists / conflict / 同名."""
     if upload_ok:
         return False
@@ -199,7 +196,7 @@ def _run_upload_enable_reload(
     enable: bool,
     reload: bool,
     plugin_id_hint: str,
-) -> Tuple[Any, str, Dict[str, Any]]:
+) -> tuple[Any, str, dict[str, Any]]:
     """Upload ZIP then optional enable/reload/failed/get. Returns (upload, plugin_id, steps)."""
     upload = client.post_multipart(
         "/api/v1/plugins/install/upload",
@@ -210,16 +207,11 @@ def _run_upload_enable_reload(
     if upload.ok and isinstance(upload.data, dict):
         data = upload.data.get("data", upload.data)
         if isinstance(data, dict):
-            plugin_id = (
-                data.get("name")
-                or data.get("plugin_id")
-                or data.get("id")
-                or plugin_id
-            )
+            plugin_id = data.get("name") or data.get("plugin_id") or data.get("id") or plugin_id
         elif isinstance(data, str) and data.strip():
             plugin_id = data.strip()
 
-    steps: Dict[str, Any] = {}
+    steps: dict[str, Any] = {}
     if not upload.ok:
         return upload, plugin_id, steps
 
@@ -238,9 +230,7 @@ def _run_upload_enable_reload(
             steps["failed_probe"] = failed.to_dict()
             steps["plugin_in_failed"] = _plugin_still_failed(failed.data, plugin_id)
         else:
-            rel2 = client.post(
-                f"/api/v1/plugins/failed/{encode_plugin_id(plugin_id)}/reload"
-            )
+            rel2 = client.post(f"/api/v1/plugins/failed/{encode_plugin_id(plugin_id)}/reload")
             steps["reload_failed_endpoint"] = rel2.to_dict()
             failed = client.get("/api/v1/plugins/failed")
             steps["failed_probe"] = failed.to_dict()
@@ -323,14 +313,12 @@ def astrbot_plugin_install_path(
     main_hash = _main_py_hash_from_zip(pack.zip_bytes)
 
     client = AstrBotClient(cfg)
-    before_snap = _plugin_get_snapshot(client, guessed_id) if guessed_id else {
-        "present": False
-    }
+    before_snap = _plugin_get_snapshot(client, guessed_id) if guessed_id else {"present": False}
 
     # stale-failed detection: plugin NOT in normal list but present in failed list
     # → mutations (upload/enable/reload/uninstall) are typically blocked server-side
     # with generic "插件操作失败"; force_refresh cannot fix it (only failed entry).
-    stale_failed: Optional[Dict[str, Any]] = None
+    stale_failed: dict[str, Any] | None = None
     if not before_snap.get("present") and guessed_id:
         failed_resp = client.get("/api/v1/plugins/failed")
         if failed_resp.ok and isinstance(failed_resp.data, dict):
@@ -356,8 +344,8 @@ def astrbot_plugin_install_path(
                 }
 
     refresh_mode = "upload_only"
-    pre_uninstall: Optional[Dict[str, Any]] = None
-    pre_clear_failed: Optional[Dict[str, Any]] = None
+    pre_uninstall: dict[str, Any] | None = None
+    pre_clear_failed: dict[str, Any] | None = None
 
     # clear_failed: when a stale failed record blocks all mutations, remove it
     # first (keep config/data) then upload. Opt-in — never auto-delete.
@@ -422,7 +410,7 @@ def astrbot_plugin_install_path(
         plugin_id_hint=guessed_id,
     )
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": upload.ok,
         "mutation": "install_upload",
         "scheme": "A_local_zip_upload",
@@ -533,16 +521,15 @@ def astrbot_plugin_install_path(
 
     if in_failed:
         try:
-            from .failure_analysis import analyze_failed_payload
             from .error_fingerprint import record_diagnoses_if_enabled
+            from .failure_analysis import analyze_failed_payload
 
             failed_payload = steps.get("failed_probe", {}).get("data")
             analysis = analyze_failed_payload(failed_payload)
             mine = [
                 d
                 for d in analysis["diagnoses"]
-                if str(plugin_id or "")
-                in (d.get("dir_name", ""), d.get("plugin_name", ""))
+                if str(plugin_id or "") in (d.get("dir_name", ""), d.get("plugin_name", ""))
             ]
             out["failure_diagnosis"] = mine or analysis["diagnoses"]
             recorded = record_diagnoses_if_enabled(
@@ -556,9 +543,7 @@ def astrbot_plugin_install_path(
     try:
         from .tools_profile import post_install_dashboard_hints
 
-        out["dashboard_hints"] = post_install_dashboard_hints(
-            str(plugin_id or guessed_id)
-        )
+        out["dashboard_hints"] = post_install_dashboard_hints(str(plugin_id or guessed_id))
     except Exception as exc:  # noqa: BLE001
         out["dashboard_hints"] = {"ok": False, "error": repr(exc)}
 

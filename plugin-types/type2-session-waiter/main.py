@@ -1,7 +1,6 @@
-from astrbot.api import logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
-from astrbot.core.utils.session_waiter import session_waiter, SessionController
+from astrbot.core.utils.session_waiter import SessionController, session_waiter
 
 
 class QuizPlugin(Star):
@@ -29,7 +28,9 @@ class QuizPlugin(Star):
                 return
 
             if answer in ("Star", "star"):
-                await event.send(event.plain_result("Correct! The AstrBot plugin base class is Star."))
+                await event.send(
+                    event.plain_result("Correct! The AstrBot plugin base class is Star.")
+                )
                 controller.stop()
                 return
 

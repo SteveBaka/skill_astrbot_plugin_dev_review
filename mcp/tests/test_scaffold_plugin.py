@@ -1,11 +1,11 @@
 """Scaffold invariant: every SCAFFOLD_TYPE fresh tree → review error=0."""
+
 from __future__ import annotations
 
 import json
 
 import pytest
-
-from runtime.contracts import SCAFFOLD_TYPES, validate_plugin_name, slug_to_class_name
+from runtime.contracts import SCAFFOLD_TYPES, slug_to_class_name, validate_plugin_name
 from runtime.review_static import review_adapter_directory, review_plugin_directory
 from runtime.scaffold_plugin import default_workspace_dir, scaffold_plugin
 
@@ -60,7 +60,7 @@ class TestScaffoldInvariant:
         )
         (d / "requirements.txt").write_text("#\n", encoding="utf-8")
         (d / "main.py").write_text(
-            '''import asyncio
+            """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.core.platform.register import register_platform_adapter
 from astrbot.api.event import MessageChain
@@ -79,7 +79,7 @@ class BadAdapt(Platform):
 
     async def send_by_session(self, session, message_chain: MessageChain):
         pass
-''',
+""",
             encoding="utf-8",
         )
         report = review_adapter_directory(d)
@@ -96,7 +96,7 @@ class BadAdapt(Platform):
         )
         (d / "requirements.txt").write_text("#\n", encoding="utf-8")
         (d / "main.py").write_text(
-            '''import asyncio
+            """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.api.star import Context, Star
 from astrbot.core.platform.register import register_platform_adapter
@@ -123,15 +123,11 @@ class BadCfg(Platform):
 class BadCfgPlugin(Star):  # Star entry so only FIX-06 redundant-key warning fires
     def __init__(self, context: Context):
         super().__init__(context)
-''',
+""",
             encoding="utf-8",
         )
         report = review_adapter_directory(d)
-        warns = [
-            f
-            for f in report.findings
-            if f.rule == "FIX-06" and f.severity == "warning"
-        ]
+        warns = [f for f in report.findings if f.rule == "FIX-06" and f.severity == "warning"]
         assert warns, report.findings
         assert report.ok  # warnings do not fail adapter profile ok
 
@@ -145,7 +141,7 @@ class BadCfgPlugin(Star):  # Star entry so only FIX-06 redundant-key warning fir
         (d / "requirements.txt").write_text("#\n", encoding="utf-8")
         (d / "_conf_schema.json").write_text('{"token": {"type": "string"}}\n')
         (d / "main.py").write_text(
-            '''import asyncio
+            """import asyncio
 from astrbot.api.platform import Platform, PlatformMetadata
 from astrbot.core.platform.register import register_platform_adapter
 from astrbot.api.event import MessageChain
@@ -163,7 +159,7 @@ class BadSchema(Platform):
 
     async def send_by_session(self, session, message_chain: MessageChain):
         pass
-''',
+""",
             encoding="utf-8",
         )
         report = review_adapter_directory(d)

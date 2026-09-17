@@ -4,6 +4,7 @@ Security invariant: when ASTRBOT_LOG_MCP_URL is unset on the MCP host, the
 astrbot_logs_* relay tools MUST NOT be registered (feature disabled; no
 connection attempts). When it is set, they MUST be present.
 """
+
 from __future__ import annotations
 
 from runtime import register

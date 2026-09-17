@@ -22,7 +22,7 @@ See `messages/events.md`, `agent/hooks.md`
 See `messages/components.md`
 
 ```python
-from astrbot.api.message_components import Comp
+import astrbot.api.message_components as Comp
 ```
 
 - `Comp.Plain(text)` / `Comp.At(user_id)` / `Comp.Image.fromURL(url)` / `Comp.Record` / `Comp.Video` / `Comp.File` / `Comp.Face` / `Comp.Reply` / `Comp.Node` / `Comp.Nodes`

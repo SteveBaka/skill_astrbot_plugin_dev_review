@@ -1,9 +1,6 @@
 """Unit tests for runtime.error_fingerprint — desensitization + KB + propose."""
+
 from __future__ import annotations
-
-import os
-
-import pytest
 
 from runtime.error_fingerprint import (
     FingerprintStore,
@@ -16,7 +13,7 @@ from runtime.error_fingerprint import (
 )
 
 RAW = (
-    "File \"/AstrBot/data/plugins/astrbot_plugin_quiz/main.py\", line 42, in <module>\n"
+    'File "/AstrBot/data/plugins/astrbot_plugin_quiz/main.py", line 42, in <module>\n'
     "    from astrbot.api.logger import logger\n"
     "ModuleNotFoundError: No module named 'astrbot.api.logger'"
 )
@@ -68,9 +65,7 @@ class TestFingerprint:
         assert a != b
 
     def test_desensitized_sample_no_secrets(self):
-        key, sample, meta = fingerprint_of(
-            RAW, error_class="wrong_import_path", fix_rule="FIX-00"
-        )
+        key, sample, meta = fingerprint_of(RAW, error_class="wrong_import_path", fix_rule="FIX-00")
         assert meta["fix_rule"] == "FIX-00"
         assert "astrbot_plugin_quiz" not in sample
 
@@ -166,7 +161,7 @@ class TestValidateFixEntry:
         entry = self._entry(sample, pattern="alpha widget exploded in builder")
         # force guide to contain the pattern
         guide.write_text(
-            "### FIX-30: x\n\n```python\nre.compile(r\"alpha widget exploded in builder\")\n```\n",
+            '### FIX-30: x\n\n```python\nre.compile(r"alpha widget exploded in builder")\n```\n',
             encoding="utf-8",
         )
         v = validate_fix_entry(entry, guide)

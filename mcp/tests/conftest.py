@@ -2,6 +2,7 @@
 
 Run from mcp/:  .venv/bin/pytest tests/ -v
 """
+
 from __future__ import annotations
 
 import sys

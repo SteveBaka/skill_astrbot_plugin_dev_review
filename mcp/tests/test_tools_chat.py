@@ -2,13 +2,13 @@
 
 HTTP layer is exercised with httpx.MockTransport (no real AstrBot needed).
 """
+
 from __future__ import annotations
 
 import json
 
 import httpx
 import pytest
-
 from runtime import tools_chat
 from runtime.client import AstrBotClient
 from runtime.config import load_config
@@ -27,9 +27,7 @@ class TestWebchatScopeFilter:
         assert _is_webchat_session({"platform_id": " WebChat "})
 
     def test_umo_string_forms(self):
-        assert _is_webchat_session(
-            {"session_id": "webchat:FriendMessage:webchat!user!326b11bd"}
-        )
+        assert _is_webchat_session({"session_id": "webchat:FriendMessage:webchat!user!326b11bd"})
         assert _is_webchat_session({"umo": "webchat:FriendMessage:webchat!u!x"})
         assert _is_webchat_session({"id": "webchat!u!x"})
 
@@ -37,9 +35,7 @@ class TestWebchatScopeFilter:
         # PRIVACY: real conversations must never be classified as webchat
         assert not _is_webchat_session({"platform_id": "aiocqhttp"})
         assert not _is_webchat_session({"platform_id": "telegram"})
-        assert not _is_webchat_session(
-            {"session_id": "aiocqhttp:FriendMessage:12345"}
-        )
+        assert not _is_webchat_session({"session_id": "aiocqhttp:FriendMessage:12345"})
         assert not _is_webchat_session({"session_id": "326b11bd-3337-49f5"})
         assert not _is_webchat_session({})
 
@@ -90,9 +86,7 @@ class TestSummarize:
         assert s["errors"] == []
 
     def test_plain_truncated(self):
-        s = summarize_chat_events(
-            [{"type": "plain", "data": "x" * 2000}], text_limit=100
-        )
+        s = summarize_chat_events([{"type": "plain", "data": "x" * 2000}], text_limit=100)
         assert len(s["plain_texts"][0]) == 101  # 100 + ellipsis
 
     def test_error_events_collected(self):
@@ -136,17 +130,13 @@ class TestCleanupGates:
 
     def test_username_required(self, monkeypatch):
         monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
-        r = json.loads(
-            tools_chat.astrbot_chat_sessions_cleanup("id1", confirm_cleanup=True)
-        )
+        r = json.loads(tools_chat.astrbot_chat_sessions_cleanup("id1", confirm_cleanup=True))
         assert r["error_kind"] == "bad_request"
 
     def test_no_ids_no_flag_rejected(self, monkeypatch):
         monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
         r = json.loads(
-            tools_chat.astrbot_chat_sessions_cleanup(
-                "", username="u", confirm_cleanup=True
-            )
+            tools_chat.astrbot_chat_sessions_cleanup("", username="u", confirm_cleanup=True)
         )
         assert r["error_kind"] == "bad_request"
 
@@ -187,9 +177,7 @@ class TestSessionPolicy:
             )
             return httpx.Response(200, text=sse)
 
-        monkeypatch.setattr(
-            tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler)
-        )
+        monkeypatch.setattr(tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler))
         r = json.loads(tools_chat.astrbot_chat_probe("hi", confirm_probe=True))
         assert captured["body"]["session_id"] == "mcp-smoke-tester"
         assert captured["body"]["username"] == "tester"
@@ -205,9 +193,7 @@ class TestSessionPolicy:
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(200, text='data: {"type": "end"}\n\n')
 
-        monkeypatch.setattr(
-            tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler)
-        )
+        monkeypatch.setattr(tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler))
         json.loads(tools_chat.astrbot_chat_probe("hi", confirm_probe=True))
         assert captured["body"]["session_id"] == "custom-smoke"
 
@@ -222,9 +208,7 @@ class TestSessionPolicy:
                 text='data: {"type": "plain", "data": "ok"}\n\ndata: {"type": "end"}\n\n',
             )
 
-        monkeypatch.setattr(
-            tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler)
-        )
+        monkeypatch.setattr(tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler))
         r = json.loads(
             tools_chat.astrbot_chat_probe(
                 "hi",
@@ -238,13 +222,9 @@ class TestSessionPolicy:
     def test_http200_error_envelope_detected(self, env, monkeypatch):
         # AstrBot returns HTTP 200 + {"status": "error"} — must NOT count as ok
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, json={"status": "error", "message": "Missing key: username"}
-            )
+            return httpx.Response(200, json={"status": "error", "message": "Missing key: username"})
 
-        monkeypatch.setattr(
-            tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler)
-        )
+        monkeypatch.setattr(tools_chat, "AstrBotClient", lambda cfg=None: _mock_client(handler))
         r = json.loads(tools_chat.astrbot_chat_probe("hi", confirm_probe=True))
         assert r["ok"] is False
         assert r["error_kind"] == "chat_api_error"

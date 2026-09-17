@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from .client import AstrBotClient
 from .config import load_config, mutation_denied_payload
@@ -44,23 +44,20 @@ DEFAULT_TEXT_LIMIT = 800
 DEFAULT_EVENT_LIMIT = 40
 
 
-def _delete_session(client: AstrBotClient, session_id: str) -> Dict[str, Any]:
+def _delete_session(client: AstrBotClient, session_id: str) -> dict[str, Any]:
     """DELETE /api/v1/chat/sessions/{session_id}; returns compact result."""
     result = client.delete(f"/api/v1/chat/sessions/{session_id}")
     # AstrBot may return HTTP 200 with {"status": "error", ...}
-    envelope_error = (
-        isinstance(result.data, dict) and result.data.get("status") == "error"
-    )
+    envelope_error = isinstance(result.data, dict) and result.data.get("status") == "error"
     return {
         "session_id": session_id,
         "deleted": result.ok and not envelope_error,
         "status_code": result.status_code,
-        "error": result.error
-        or (result.data.get("message") if envelope_error else None),
+        "error": result.error or (result.data.get("message") if envelope_error else None),
     }
 
 
-def _is_webchat_session(s: Dict[str, Any]) -> bool:
+def _is_webchat_session(s: dict[str, Any]) -> bool:
     """
     HARD SCOPE: only WebChat-platform sessions are deletable.
 
@@ -81,7 +78,7 @@ def _is_webchat_session(s: Dict[str, Any]) -> bool:
 
 def _fetch_webchat_session_ids(
     client: AstrBotClient, username: str, page_size: int
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """List sessions for username and return only verified-webchat ids."""
     listed = client.get(
         "/api/v1/chat/sessions",
@@ -89,17 +86,13 @@ def _fetch_webchat_session_ids(
     )
     if not listed.ok:
         return {"ok": False, "error": listed.error, "error_kind": listed.error_kind}
-    data = (
-        listed.data.get("data", listed.data)
-        if isinstance(listed.data, dict)
-        else listed.data
-    )
-    raw_sessions: List[Any] = []
+    data = listed.data.get("data", listed.data) if isinstance(listed.data, dict) else listed.data
+    raw_sessions: list[Any] = []
     if isinstance(data, dict):
         raw_sessions = data.get("sessions") or data.get("items") or []
     elif isinstance(data, list):
         raw_sessions = data
-    webchat_ids: List[str] = []
+    webchat_ids: list[str] = []
     skipped_non_webchat = 0
     for s in raw_sessions:
         if not isinstance(s, dict):
@@ -141,9 +134,9 @@ def _chat_allowed(confirm_probe: bool) -> bool:
     return _env_bool("ASTRBOT_ALLOW_CHAT_PROBE", False)
 
 
-def parse_sse_events(raw: str) -> List[Dict[str, Any]]:
+def parse_sse_events(raw: str) -> list[dict[str, Any]]:
     """Parse AstrBot chat SSE body into a list of event dicts."""
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     if not raw:
         return events
     # Normalize: handle both \n\n separated and single-line streams
@@ -152,7 +145,7 @@ def parse_sse_events(raw: str) -> List[Dict[str, Any]]:
         block = block.strip()
         if not block:
             continue
-        data_lines: List[str] = []
+        data_lines: list[str] = []
         for line in block.split("\n"):
             if line.startswith("data:"):
                 data_lines.append(line[5:].lstrip())
@@ -173,18 +166,18 @@ def parse_sse_events(raw: str) -> List[Dict[str, Any]]:
 
 
 def summarize_chat_events(
-    events: List[Dict[str, Any]],
+    events: list[dict[str, Any]],
     *,
     text_limit: int = DEFAULT_TEXT_LIMIT,
     max_events: int = DEFAULT_EVENT_LIMIT,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Extract agent-friendly fields from SSE events (truncated)."""
     session_id = None
-    plains: List[str] = []
-    records: List[str] = []
-    attachments: List[Any] = []
-    errors: List[str] = []
-    types: List[str] = []
+    plains: list[str] = []
+    records: list[str] = []
+    attachments: list[Any] = []
+    errors: list[str] = []
+    types: list[str] = []
     ended = False
 
     for ev in events[:max_events]:
@@ -297,10 +290,7 @@ def astrbot_chat_probe(
     cname = (config_name or "").strip()
     cid = (config_id or "").strip()
     if not cname and not cid:
-        cname = (
-            (os.environ.get("ASTRBOT_CHAT_CONFIG_NAME") or "").strip()
-            or DEFAULT_CONFIG_NAME
-        )
+        cname = (os.environ.get("ASTRBOT_CHAT_CONFIG_NAME") or "").strip() or DEFAULT_CONFIG_NAME
 
     # [RUNTIME] Plan B fixed smoke session (anti-list-spam):
     # ALWAYS land on ONE id per username. Callers used to pass random
@@ -316,7 +306,7 @@ def astrbot_chat_probe(
     requested = (session_id or "").strip()
     sid = canonical
     session_id_ignored = bool(requested and requested != canonical)
-    body: Dict[str, Any] = {
+    body: dict[str, Any] = {
         "message": msg,
         "username": user,
         "session_id": sid,
@@ -330,8 +320,10 @@ def astrbot_chat_probe(
 
     cfg = load_config()
     # Chat may run longer than default plugin list timeout
-    timeout = float(timeout_seconds) if timeout_seconds and timeout_seconds > 0 else max(
-        float(cfg.timeout), 60.0
+    timeout = (
+        float(timeout_seconds)
+        if timeout_seconds and timeout_seconds > 0
+        else max(float(cfg.timeout), 60.0)
     )
 
     client = AstrBotClient(cfg)
@@ -339,7 +331,7 @@ def astrbot_chat_probe(
     result = client.post("/api/v1/chat", json_body=body, timeout=timeout)
     elapsed = round((time.time() - t0) * 1000.0, 2)
 
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": False,
         "mutation": "chat_probe",
         "elapsed_ms": elapsed,
@@ -396,7 +388,7 @@ def astrbot_chat_probe(
         return _dumps(out)
 
     raw_text = ""
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     if isinstance(data, dict) and data.get("_raw_text"):
         raw_text = str(data["_raw_text"])
         events = parse_sse_events(raw_text)
@@ -473,11 +465,11 @@ def astrbot_chat_sessions_brief(username: str = "", page: int = 1, page_size: in
     """
     user = (username or "").strip() or (os.environ.get("ASTRBOT_CHAT_USERNAME") or "").strip()
     client = AstrBotClient()
-    params: Dict[str, Any] = {"page": page, "page_size": page_size}
+    params: dict[str, Any] = {"page": page, "page_size": page_size}
     if user:
         params["username"] = user
     result = client.get("/api/v1/chat/sessions", params=params)
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": result.ok,
         "username_filter": user or None,
         "error": result.error,
@@ -587,9 +579,7 @@ def astrbot_chat_sessions_cleanup(
 
     # Verify against the username's webchat session list (privacy hard-gate):
     # only ids present in this verified list may be deleted.
-    fetched = _fetch_webchat_session_ids(
-        client, user, page_size=max(max_delete, len(requested), 1)
-    )
+    fetched = _fetch_webchat_session_ids(client, user, page_size=max(max_delete, len(requested), 1))
     if not fetched["ok"]:
         return _dumps(
             {
@@ -598,7 +588,7 @@ def astrbot_chat_sessions_cleanup(
                 "error": f"Failed to list sessions for verification: {fetched.get('error')}",
             }
         )
-    verified: List[str] = fetched["webchat_ids"]
+    verified: list[str] = fetched["webchat_ids"]
 
     if requested:
         ids = [i for i in requested if i in verified]
@@ -644,40 +634,32 @@ def astrbot_chat_sessions_cleanup(
     # Prefer batch endpoint; fall back to per-id DELETE if unsupported.
     # NOTE: AstrBot may return HTTP 200 with an error envelope, or 200 without
     # actually deleting — always verify by re-listing afterwards.
-    batch = client.post(
-        "/api/v1/chat/sessions/batch-delete", json_body={"session_ids": ids}
-    )
+    batch = client.post("/api/v1/chat/sessions/batch-delete", json_body={"session_ids": ids})
     batch_envelope_ok = batch.ok and not (
         isinstance(batch.data, dict) and batch.data.get("status") == "error"
     )
 
-    per_id_results: List[Dict[str, Any]] = []
+    per_id_results: list[dict[str, Any]] = []
     if not batch_envelope_ok:
         per_id_results = [_delete_session(client, sid) for sid in ids]
 
     # ── Post-delete verification (authoritative) ───────────────
     recheck = _fetch_webchat_session_ids(client, user, page_size=max(max_delete, 50))
-    remaining = (
-        [i for i in ids if i in recheck["webchat_ids"]] if recheck["ok"] else None
-    )
+    remaining = [i for i in ids if i in recheck["webchat_ids"]] if recheck["ok"] else None
 
     if remaining:
         # batch claimed success but sessions survived → retry per-id once
         if batch_envelope_ok and not per_id_results:
             per_id_results = [_delete_session(client, sid) for sid in remaining]
-            recheck = _fetch_webchat_session_ids(
-                client, user, page_size=max(max_delete, 50)
-            )
+            recheck = _fetch_webchat_session_ids(client, user, page_size=max(max_delete, 50))
             remaining = (
-                [i for i in ids if i in recheck["webchat_ids"]]
-                if recheck["ok"]
-                else remaining
+                [i for i in ids if i in recheck["webchat_ids"]] if recheck["ok"] else remaining
             )
 
     verified_deleted = (
         [i for i in ids if i not in (remaining or [])] if remaining is not None else None
     )
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "ok": remaining == [],
         "mutation": "chat_sessions_cleanup",
         "mode": "batch" if batch_envelope_ok and not per_id_results else "per_id_fallback",

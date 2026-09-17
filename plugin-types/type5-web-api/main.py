@@ -1,9 +1,9 @@
 import time
+
 from astrbot.api import logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 from quart import jsonify
-
 
 PLUGIN_NAME = "astrbot_plugin_dashboard"
 
@@ -37,17 +37,21 @@ class DashboardPlugin(Star):
     async def api_status(self):
         """Status API"""
         uptime = int(time.time() - self.start_time)
-        return jsonify({
-            "status": "running",
-            "uptime_seconds": uptime,
-        })
+        return jsonify(
+            {
+                "status": "running",
+                "uptime_seconds": uptime,
+            }
+        )
 
     async def api_stats(self):
         """Statistics API"""
-        return jsonify({
-            "plugin_name": PLUGIN_NAME,
-            "data_dir": str(self.data_dir),
-        })
+        return jsonify(
+            {
+                "plugin_name": PLUGIN_NAME,
+                "data_dir": str(self.data_dir),
+            }
+        )
 
     @filter.command("dashboard")
     async def dashboard_info(self, event: AstrMessageEvent):

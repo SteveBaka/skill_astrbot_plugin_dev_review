@@ -32,15 +32,25 @@ class MyPlugin(Star):
 **Key Points**:
 - `@filter.command("name")` registers a command; user sends `/name` to trigger
 - `yield event.plain_result(text)` sends a plain text reply
-- Command arguments can be obtained via `event.message_str`, or parsed automatically using function parameters
 
-**Simple Command (recommended — use `event.message_str`)**:
+**Command argument policy (H1-B — binding constraint for codegen models)**  
+Official docs allow typed command parameters. **AstrBot 4.27.4 smoke** confirmed typed ints, `str` defaults, and command_group typed args all work. `event.message_str` is the **full plaintext** (command token included). Models must pick **one** style per command:
+
+| Input shape | Style | Example |
+|-------------|--------|---------|
+| Numbers / flags / fixed schema | Annotated typed params | `a: int, b: int` |
+| Free-text remainder (spaces, URLs) | No extra params; strip command from `message_str` | see below |
+| Untyped extras | Forbidden — annotate or use message_str | 🟡 FIX-02 |
+
+**Free-text remainder (recommended for prose args)**:
 
 ```python
 @filter.command("weather")
 async def weather(self, event: AstrMessageEvent):
     """Query weather for a city."""
-    city = event.message_str.strip()
+    raw = event.message_str.strip()
+    parts = raw.split(None, 1)
+    city = parts[1].strip() if len(parts) > 1 else ""
     if not city:
         yield event.plain_result("Usage: /weather <city>")
         return
@@ -48,15 +58,16 @@ async def weather(self, event: AstrMessageEvent):
     yield event.plain_result(result)
 ```
 
-**Command with Typed Arguments** (for numeric parsing):
+**Command with Typed Arguments** (structured — official; allowed):
 
 ```python
 @filter.command("add")
 async def add(self, event: AstrMessageEvent, a: int, b: int):
+    """Add two integers."""
     yield event.plain_result(f"Result: {a + b}")
 ```
 
-> ⚠️ **Parameter binding warning**: AstrBot's `context_utils.py` may cause `got multiple values for argument` errors when using string function parameters with default values (e.g., `city: str = ""`). For text input, always use `event.message_str.strip()` instead of function parameters. Typed parameters (`a: int, b: int`) for numeric parsing are safe.
+> **Runtime note (4.27.4)**: typed params bind correctly; missing/type errors are framework messages, not crashes. Do **not** ban all function parameters. Avoid untyped free-text extras; when free-text is needed, use the message_str remainder pattern above.
 
 **Command Group** (official pattern):
 
@@ -345,10 +356,12 @@ async def on_tool_end(self, event, tool, tool_args, tool_result: CallToolResult 
 
 **Scenario**: Frontend pages, REST APIs, status monitoring panels.
 
-**Core Structure**:
+**Core Structure** (official `guides/plugin-pages.md` — `astrbot.api.web`):
 
 ```python
-from quart import jsonify
+from astrbot.api.star import Context, Star
+from astrbot.api.web import json_response, request
+# Legacy alternative (still loaded): from quart import jsonify, request
 
 PLUGIN_NAME = "astrbot_plugin_myplugin"
 
@@ -363,12 +376,14 @@ class MyPlugin(Star):
         )
 
     async def api_status(self):
-        return jsonify({"status": "ok"})
+        return json_response({"status": "ok"})
 
     async def initialize(self):
         self.data_dir = StarTools.get_data_dir()
         self.data_dir.mkdir(parents=True, exist_ok=True)
 ```
+
+> **Next-core note**: new plugins should import `astrbot.api.web` helpers so Dashboard/plugin-page evolution does not require Quart-specific code. Route prefix `{PLUGIN_NAME}/...` remains mandatory; bridge endpoints omit the prefix.
 
 **Frontend Page Structure**:
 
@@ -511,7 +526,7 @@ async def weather(self, event: AstrMessageEvent):
 **Scenario**: Send images, @mentions, audio, video, and other rich media messages.
 
 ```python
-from astrbot.api.message_components import Comp
+import astrbot.api.message_components as Comp
 
 # Plain text
 yield event.plain_result("文字")

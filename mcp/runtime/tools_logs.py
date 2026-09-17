@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 from .config import load_config
 
@@ -48,7 +48,7 @@ def _log_mcp_url() -> str:
     return (os.environ.get("ASTRBOT_LOG_MCP_URL") or "").strip()
 
 
-def _not_configured() -> Dict[str, Any]:
+def _not_configured() -> dict[str, Any]:
     return {
         "ok": False,
         "error_kind": "not_configured",
@@ -64,9 +64,9 @@ def _not_configured() -> Dict[str, Any]:
     }
 
 
-def _auth_headers() -> Dict[str, str]:
+def _auth_headers() -> dict[str, str]:
     """Headers sent to the plugin: X-API-Key (optional) + X-MCP-Token (shared)."""
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
     cfg = load_config()
     if cfg.token:
         headers["X-API-Key"] = cfg.token
@@ -76,9 +76,9 @@ def _auth_headers() -> Dict[str, str]:
     return headers
 
 
-def _extract_text(content: Any) -> List[str]:
+def _extract_text(content: Any) -> list[str]:
     """Flatten CallToolResult.content into TextContent texts."""
-    out: List[str] = []
+    out: list[str] = []
     if not isinstance(content, (list, tuple)):
         return out
     for block in content:
@@ -90,7 +90,7 @@ def _extract_text(content: Any) -> List[str]:
     return out
 
 
-async def _call_plugin_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+async def _call_plugin_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
     """Open an SSE session to the plugin and call one MCP tool synchronously."""
     url = _log_mcp_url()
     if not url:
@@ -102,8 +102,9 @@ async def _call_plugin_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, A
         timeout = 15
 
     try:
-        from mcp import ClientSession
         from mcp.client.sse import sse_client
+
+        from mcp import ClientSession
     except Exception as exc:  # pragma: no cover — env missing mcp client
         return {
             "ok": False,
@@ -161,7 +162,7 @@ async def astrbot_logs_history(
     otherwise). If the plugin requires a shared token, set ASTRBOT_LOG_MCP_TOKEN
     on the MCP host (sent as X-MCP-Token; must equal the plugin's auth_token).
     """
-    args: Dict[str, Any] = {"limit": limit}
+    args: dict[str, Any] = {"limit": limit}
     if level:
         args["level"] = level
     if keyword:
@@ -171,25 +172,42 @@ async def astrbot_logs_history(
     return json.dumps(await _call_plugin_tool("logs_history", args), ensure_ascii=False, indent=2)
 
 
-async def astrbot_logs_tail(lines: int = 50, level: str = "") -> str:
+async def astrbot_logs_tail(lines: int = 50, level: str = "", source: str = "auto") -> str:
     """[RUNTIME P1] Tail last N AstrBot log lines via MCP (read-only).
 
-    Prefers the in-process LogBroker cache; falls back to the log file when the
-    plugin resolves it. Enabled only when ASTRBOT_LOG_MCP_URL is set.
+    source=auto (default): prefers the in-process LogBroker cache (last 500
+    entries). source=file: force-reads the log file (<data>/logs/astrbot.log or
+    the plugin's log_file_path config) — use it for entries older than the
+    cache. Enabled only when ASTRBOT_LOG_MCP_URL is set.
     """
-    args: Dict[str, Any] = {"lines": lines}
+    args: dict[str, Any] = {"lines": lines, "source": source}
     if level:
         args["level"] = level
     return json.dumps(await _call_plugin_tool("logs_tail", args), ensure_ascii=False, indent=2)
 
 
-async def astrbot_logs_search(keyword: str, level: str = "", limit: int = 100) -> str:
-    """[RUNTIME P1] Search recent AstrBot logs for a keyword via MCP (read-only).
+async def astrbot_logs_search(
+    keyword: str,
+    level: str = "",
+    limit: int = 100,
+    source: str = "auto",
+    since: str = "",
+    until: str = "",
+) -> str:
+    """[RUNTIME P1] Search AstrBot logs for a keyword via MCP (read-only).
 
-    Case-insensitive substring search over the in-process LogBroker cache through
-    astrbot_plugin_mcp_logs_bridge. Enabled only when ASTRBOT_LOG_MCP_URL is set.
+    source=auto (default): case-insensitive substring search over the in-process
+    LogBroker cache (last 500 entries). source=file: line-by-line search of the
+    log file — use it for entries older than the cache; since/until filter on
+    the '[YYYY-MM-DD HH:MM:SS]' timestamp prefix ('YYYY-MM-DD' or full datetime,
+    inclusive; giving since/until implies file source). Enabled only when
+    ASTRBOT_LOG_MCP_URL is set.
     """
-    args: Dict[str, Any] = {"keyword": keyword, "limit": limit}
+    args: dict[str, Any] = {"keyword": keyword, "limit": limit, "source": source}
     if level:
         args["level"] = level
+    if since:
+        args["since"] = since
+    if until:
+        args["until"] = until
     return json.dumps(await _call_plugin_tool("logs_search", args), ensure_ascii=False, indent=2)

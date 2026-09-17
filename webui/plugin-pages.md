@@ -106,9 +106,12 @@ async function init() {
 
 ## Backend API Registration
 
+Official `guides/plugin-pages.md` **recommends** `astrbot.api.web` helpers for new plugins.
+Quart (`jsonify` / `request`) still works for **legacy** handlers — do not mix both proxies in one handler.
+
 ```python
-from quart import jsonify, request
 from astrbot.api.star import Context, Star
+from astrbot.api.web import json_response, request
 
 PLUGIN_NAME = "astrbot_plugin_xxx"
 
@@ -129,11 +132,18 @@ class MyPlugin(Star):
         )
 
     async def api_get_config(self):
-        return jsonify({"key": "value"})
+        return json_response({"key": "value"})
 
     async def api_save_config(self):
-        body = await request.json
-        return jsonify({"status": "ok"})
+        body = await request.json(default={})
+        return json_response({"status": "ok", "echo": body})
+```
+
+**Legacy Quart** (existing plugins only):
+
+```python
+from quart import jsonify, request
+# return jsonify({...}); body = await request.json
 ```
 
 ### Route Format

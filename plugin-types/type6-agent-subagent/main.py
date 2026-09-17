@@ -1,12 +1,12 @@
 import aiohttp
 from astrbot.api import logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
+from astrbot.core.agent.run_context import ContextWrapper
+from astrbot.core.agent.tool import FunctionTool, ToolSet
+from astrbot.core.astr_agent_context import AstrAgentContext
 from pydantic import Field
 from pydantic.dataclasses import dataclass
-from astrbot.core.agent.tool import FunctionTool, ToolSet
-from astrbot.core.agent.run_context import ContextWrapper
-from astrbot.core.astr_agent_context import AstrAgentContext
 
 
 @dataclass
@@ -28,9 +28,7 @@ class SearchWebTool(FunctionTool[AstrAgentContext]):
         }
     )
 
-    async def call(
-        self, context: ContextWrapper[AstrAgentContext], **kwargs
-    ) -> str:
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> str:
         query = kwargs.get("query", "")
         if not query:
             return "Error: Missing 'query' parameter"
@@ -74,9 +72,7 @@ class AgentPlugin(Star):
             return
 
         try:
-            provider_id = await self.context.get_current_chat_provider_id(
-                event.unified_msg_origin
-            )
+            provider_id = await self.context.get_current_chat_provider_id(event.unified_msg_origin)
             resp = await self.context.tool_loop_agent(
                 event=event,
                 chat_provider_id=provider_id,

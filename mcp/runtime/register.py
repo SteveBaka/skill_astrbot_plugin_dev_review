@@ -37,6 +37,7 @@ _RUNTIME_SUBMODULES = {
     "tools_manage",
     "tools_profile",
     "tools_smoke",
+    "tools_version",
 }
 
 
@@ -182,9 +183,7 @@ def register_runtime_tools(mcp: Any) -> None:
         return _m("tools_manage").astrbot_plugin_log_level_get(plugin_id=plugin_id)
 
     @mcp.tool()
-    def astrbot_plugin_log_level_set(
-        plugin_id: str, level: str, confirm: bool = False
-    ) -> str:
+    def astrbot_plugin_log_level_set(plugin_id: str, level: str, confirm: bool = False) -> str:
         """
         [RUNTIME P1] Set per-plugin log level via PUT .../log-level (v4.27.0).
 
@@ -195,6 +194,29 @@ def register_runtime_tools(mcp: Any) -> None:
         """
         return _m("tools_manage").astrbot_plugin_log_level_set(
             plugin_id=plugin_id, level=level, confirm=confirm
+        )
+
+    # ── P1 version compatibility probe (official gate, read-only) ──
+
+    @mcp.tool()
+    def astrbot_version_check(
+        spec: str = "",
+        plugin_dir: str = "",
+        include_probe_version: bool = False,
+    ) -> str:
+        """
+        [RUNTIME P1] Check an `astrbot_version` range against the RUNNING AstrBot
+        via POST /api/v1/plugins/version-support/check (scope: plugin, read-only).
+
+        This is the SAME validator that gates plugin loading in core, so the
+        verdict is authoritative for this instance. Give plugin_dir to read the
+        range from its metadata.yaml, or spec for an arbitrary PEP 440 range
+        (e.g. ">=4.16,<5"). include_probe_version=true additionally reports the
+        running core version (read from the gate's own message via an
+        unsatisfiable probe spec — no system scope needed).
+        """
+        return _m("tools_version").astrbot_version_check(
+            spec=spec, plugin_dir=plugin_dir, include_probe_version=include_probe_version
         )
 
     # ── P2 lifecycle (uninstall safety) ────────────────────────
@@ -534,7 +556,8 @@ def register_runtime_tools(mcp: Any) -> None:
     # ── P3+ smoke suite (composite) ────────────────────────────
 
     @mcp.tool()
-    def astrbot_smoke_suite(        plugin_id: str,
+    def astrbot_smoke_suite(
+        plugin_id: str,
         confirm: bool = False,
         username: str = "",
         config_name: str = "",
@@ -600,25 +623,34 @@ def register_runtime_tools(mcp: Any) -> None:
             )
 
         @mcp.tool()
-        async def astrbot_logs_tail(lines: int = 50, level: str = "") -> str:
+        async def astrbot_logs_tail(lines: int = 50, level: str = "", source: str = "auto") -> str:
             """
             [RUNTIME P1] Tail last N AstrBot log lines via MCP (read-only).
 
-            Enabled only when ASTRBOT_LOG_MCP_URL is set. Prefers the in-process
-            LogBroker cache; falls back to the log file when the plugin resolves
-            it.
+            Enabled only when ASTRBOT_LOG_MCP_URL is set. source=auto (default)
+            reads the in-process LogBroker cache (last 500 entries); source=file
+            force-reads the log file — use it for entries older than the cache.
             """
-            return await _m("tools_logs").astrbot_logs_tail(lines=lines, level=level)
+            return await _m("tools_logs").astrbot_logs_tail(lines=lines, level=level, source=source)
 
         @mcp.tool()
-        async def astrbot_logs_search(keyword: str, level: str = "", limit: int = 100) -> str:
+        async def astrbot_logs_search(
+            keyword: str,
+            level: str = "",
+            limit: int = 100,
+            source: str = "auto",
+            since: str = "",
+            until: str = "",
+        ) -> str:
             """
-            [RUNTIME P1] Search recent AstrBot logs for a keyword via MCP (read-only).
+            [RUNTIME P1] Search AstrBot logs for a keyword via MCP (read-only).
 
-            Enabled only when ASTRBOT_LOG_MCP_URL is set. Case-insensitive
-            substring search over the in-process LogBroker cache through
-            astrbot_plugin_mcp_logs_bridge.
+            Enabled only when ASTRBOT_LOG_MCP_URL is set. source=auto (default)
+            searches the in-process LogBroker cache (last 500 entries); source=file
+            searches the log file line-by-line for entries older than the cache.
+            since/until ('YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS', inclusive) filter on
+            the log timestamp — giving them implies file source.
             """
             return await _m("tools_logs").astrbot_logs_search(
-                keyword=keyword, level=level, limit=limit
+                keyword=keyword, level=level, limit=limit, source=source, since=since, until=until
             )

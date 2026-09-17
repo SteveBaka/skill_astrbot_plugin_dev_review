@@ -24,7 +24,7 @@
 | `desc` or `description` | Non-empty, **cannot have both** |
 | `version` | Non-empty, e.g. `v1.0.0` |
 | `author` | Non-empty; equals user-confirmed author |
-| `repo` | Valid URL when published; **may be empty string on first scaffold** |
+| `repo` | **Local/first scaffold**: empty string is valid. **Marketplace publish**: must be a valid GitHub URL |
 
 **Optional fields**: `display_name`, `short_desc`, `astrbot_version`, `support_platforms`, `tags`, `social_link`
 
@@ -37,7 +37,7 @@
 | Field | Type | Description |
 |-------|------|-------------|
 | `short_desc` | string | One-line summary for marketplace cards; falls back to `desc` if omitted |
-| `astrbot_version` | string | PEP 440 format, no `v` prefix (e.g., `>=4.16,<5`). Blocks loading if unsatisfied |
+| `astrbot_version` | string | PEP 440 format, no `v` prefix. **Skill scaffold default `">=4.27,<5"`** (`SCAFFOLD_ASTRBOT_VERSION`). Official docs examples may show `">=4.16,<5"` — use only if the plugin avoids 4.27+ contracts. **Hard load gate**: unsatisfied range blocks loading. Raise to `">=4.28,<5"` only after templates depend on 4.28-only APIs |
 | `support_platforms` | list[str] | Platform keys: `aiocqhttp`, `telegram`, `discord`, `wecom`, `lark`, `dingtalk`, `slack`, `kook`, `misskey`, `line`, etc. |
 
 ## 3. Common metadata.yaml Errors
@@ -45,7 +45,7 @@
 ```
 ❌ desc and description both present
 ❌ version missing
-❌ repo is not a valid URL
+❌ repo set but is not a valid URL (empty is OK on first scaffold; required valid URL when publishing)
 ❌ name uses reserved words or special characters
 ```
 
@@ -121,5 +121,5 @@ metadata.yaml fields:
 - desc: Example plugin ✅
 - version: v1.0.0 ✅
 - author: Test ✅
-- repo: https://github.com/... ✅
+- repo: (empty on first scaffold) ✅ — or https://github.com/... when publishing ✅
 ```

@@ -11,14 +11,14 @@ AstrBot 的公开 OpenAPI 中没有任何 API Key 可用的日志接口（`/logs
 | MCP 工具 | 说明 |
 |----------|------|
 | `logs_history` | 同步返回最近日志（LogBroker 缓存，最近 500 条，最新在前），支持 `limit` / `level` / `keyword` / `category` 过滤 |
-| `logs_tail` | 取最近 N 行日志；优先 LogBroker，文件日志开启时回退读文件 |
-| `logs_search` | 在 LogBroker 缓存中按关键字（大小写不敏感）搜索，可选等级过滤 |
+| `logs_tail` | 取最近 N 行日志。`source=auto`（默认）优先 LogBroker；`source=file` 强制读日志文件（含轮转归档），行数不足时自动向更老的归档补齐 |
+| `logs_search` | 按关键字（大小写不敏感）搜索，可选等级过滤。`source=auto`（默认）搜缓存；`source=file` 逐行搜日志文件**及其全部轮转归档**（`astrbot.log*`，`.gz` 自动解压，新→旧），并支持 `since` / `until` 时间范围过滤（含当天日期写法，闭区间），适合多日错误定位 |
 
 数据源优先级：
 
 1. 进程内共享 `LogBroker`（`core_lifecycle.log_broker`，与 Dashboard 同源）
 2. 兜底：`LogManager._log_broker`
-3. 兜底：日志文件 `<data>/logs/astrbot.log`（需在 AstrBot 配置中开启文件日志）
+3. 文件：`source=file` 强制走日志文件（默认 `<data>/logs/astrbot.log`，`log_file_path` 可覆盖），自动并入同目录轮转归档；`logs_search` 指定 `since`/`until` 时也隐含走文件源（时间过滤依赖日志行时间戳前缀）
 
 ## 安装
 
@@ -72,7 +72,7 @@ MCP 客户端注册示例（带令牌）：
 |------|------|------|------|
 | `enable_bridge` | bool | true | 是否启用 MCP 日志桥接服务 |
 | `auth_token` | string | 空 | 双向共享令牌（`X-MCP-Token`）。留空则回退读取 AstrBot 进程环境变量 `ASTRBOT_LOG_MCP_TOKEN`；两者皆空时不校验（不推荐，仅依赖 AstrBot API Key 鉴权） |
-| `log_file_path` | string | 空 | 可选：日志文件路径（兜底读取）。与 AstrBot 本体语义一致：相对路径以 data 目录为基准（如 `logs/astrbot.log`），绝对路径原样使用；留空则用默认 `<data>/logs/astrbot.log` |
+| `log_file_path` | string | 空 | 可选：日志文件路径，供 `source=file` 模式读取。与 AstrBot 本体语义一致：相对路径以 data 目录为基准（如 `logs/astrbot.log`），绝对路径原样使用；留空则用默认 `<data>/logs/astrbot.log` |
 | `history_limit` | int | 200 | `logs_history` 未传 limit 时的默认上限（1-500，超出丢弃，最新在前） |
 | `search_limit` | int | 200 | `logs_search` 未传 limit 时的默认上限（1-500，最新在前截断） |
 

@@ -13,19 +13,26 @@ the *statically enforceable* subset used for one-shot green generation.
 from __future__ import annotations
 
 import re
-from typing import Dict, FrozenSet, List, Tuple
 
 # ── plugin identity ────────────────────────────────────────────
 
 PLUGIN_NAME_RE = re.compile(r"^astrbot_plugin_[a-z0-9_]+$")
 
+# Skill-generated plugin metadata default (NOT the official docs teaching example).
+# Official plugin-new.md examples use ">=4.16,<5"; this skill encodes 4.27+ contracts
+# (H1-B command args smoke, astrbot.api.web scaffold, log-level notes) so scaffold
+# metadata must declare a load floor that matches what we generate.
+# After a breaking 4.28 adaptation that templates actually depend on, bump to ">=4.28,<5".
+SCAFFOLD_ASTRBOT_VERSION = ">=4.27,<5"
+OFFICIAL_TEACHING_ASTRBOT_VERSION = ">=4.16,<5"
+
 # ── FIX-00 import contracts ────────────────────────────────────
 
-WRONG_IMPORT_MODULES: Dict[str, str] = {
+WRONG_IMPORT_MODULES: dict[str, str] = {
     "astrbot.api.logger": "from astrbot.api import logger  # FIX-00",
 }
 
-WRONG_FROM_API: Dict[str, str] = {
+WRONG_FROM_API: dict[str, str] = {
     "filter": "from astrbot.api.event import filter",
     "AstrMessageEvent": "from astrbot.api.event import AstrMessageEvent",
     "Star": "from astrbot.api.star import Star",
@@ -41,17 +48,125 @@ WRONG_FROM_API: Dict[str, str] = {
     "Platform": "from astrbot.api.platform import Platform",
 }
 
-DEPRECATED_FILTER_ATTRS: FrozenSet[str] = frozenset(
-    {"on_keyword", "on_full_match", "on_regex"}
+DEPRECATED_FILTER_ATTRS: frozenset[str] = frozenset()
+
+# Official @filter.<attr> surface, verified against tag/master source of
+# astrbot/api/event/filter/__init__.py (provenance: repo tags, not changelogs —
+# API-surface changes do not reliably appear in changelogs).
+#   v3.4.0: command, command_group, event_message_type, regex,
+#           platform_adapter_type, permission_type
+#   v4.0.0: + custom_filter, on_astrbot_loaded, on_llm_request, on_llm_response,
+#           llm_tool, on_decorating_result, after_message_sent
+#   master: + on_agent_begin, on_agent_done, on_llm_tool_respond,
+#           on_plugin_error, on_plugin_loaded, on_plugin_unloaded,
+#           on_platform_loaded, on_using_llm_tool, on_waiting_llm_request,
+#           EventMessageType(-Filter), PermissionType(-Filter),
+#           PlatformAdapterType(-Filter), CustomFilter, EventType, MessageType
+FILTER_ATTR_KNOWN: frozenset[str] = frozenset(
+    {
+        # v3.4.0 era
+        "command",
+        "command_group",
+        "event_message_type",
+        "regex",
+        "platform_adapter_type",
+        "permission_type",
+        # v4.0.0 additions
+        "custom_filter",
+        "on_astrbot_loaded",
+        "on_llm_request",
+        "on_llm_response",
+        "llm_tool",
+        "on_decorating_result",
+        "after_message_sent",
+        # master additions
+        "on_agent_begin",
+        "on_agent_done",
+        "on_llm_tool_respond",
+        "on_plugin_error",
+        "on_plugin_loaded",
+        "on_plugin_unloaded",
+        "on_platform_loaded",
+        "on_using_llm_tool",
+        "on_waiting_llm_request",
+        # constants / filter classes re-exported for isinstance use
+        "EventMessageType",
+        "EventMessageTypeFilter",
+        "PermissionType",
+        "PermissionTypeFilter",
+        "PlatformAdapterType",
+        "PlatformAdapterTypeFilter",
+        "CustomFilter",
+    }
 )
 
-GENERIC_PKG_NAMES: FrozenSet[str] = frozenset(
+# [PROVENANCE] Version-sensitive contract entries carry their source so the
+# drift checker (mcp/scripts/check_contract_drift.py) can re-verify each
+# against the AstrBot repo, and entries without provenance cannot be enforced
+# at error severity (lesson: FIX-21 once asserted an API that never existed).
+#   source_type: "tag" (verified in tag source) | "changelog" | "pr"
+CONTRACT_PROVENANCE: dict[str, dict[str, str]] = {
+    "FIX-21": {
+        "source_type": "tag",
+        "ref": "astrbot/api/event/filter/__init__.py (v3.4.0..master)",
+        "note": "on_keyword/on_full_match/on_regex never existed; rule now "
+        "flags unknown filter attrs, not a removal claim.",
+    },
+    "FIX-13": {
+        "source_type": "changelog+pr",
+        "ref": "changelogs/v4.25.0.md, PR #8178",
+        "note": "context.register_llm_tool() deprecated (decorator remains).",
+    },
+    "FIX-07": {
+        "source_type": "pr",
+        "ref": "docs/en/dev/star/guides/ai.md (llm tool return)",
+        "note": "Tool.call() must return str on Python 3.12.",
+    },
+    "FIX-00": {
+        "source_type": "tag",
+        "ref": "astrbot/api/{__init__,event/__init__,star/__init__,provider/__init__,message_components/__init__}.py",
+        "note": "Import surface verified against tag sources.",
+    },
+    "FIX-02": {
+        "source_type": "tag+smoke",
+        "ref": "docs/en/dev/star/guides/listen-message-event.md + "
+        "AstrBot 4.27.4 smoke (astrbot_plugin_skill_probe v0.2.0)",
+        "note": "Typed command params are official and work on 4.27.4; "
+        "H1-B policy constrains models to annotated structured params or "
+        "message_str remainder — not a blanket ban on function parameters.",
+    },
+    "public-api-web": {
+        "source_type": "tag",
+        "ref": "docs/en/dev/star/guides/plugin-pages.md + astrbot/api/web.py",
+        "note": "New plugins use astrbot.api.web helpers; Quart remains a legacy load path.",
+    },
+    "public-api-adapter": {
+        "source_type": "tag",
+        "ref": "docs/en/dev/plugin-platform-adapter.md + astrbot/api/platform/__init__.py",
+        "note": "register_platform_adapter public path is astrbot.api.platform; "
+        "MessageSesion lives in core.platform.message_session (official docs).",
+    },
+}
+
+# H1-B command arg policy (codegen / review contracts — single source for models)
+COMMAND_ARG_POLICY = {
+    "structured_types": frozenset({"int", "float", "bool"}),
+    "free_text_types": frozenset({"str"}),
+    "rule": (
+        "structured → annotated typed params; free-text → event.message_str "
+        "remainder after stripping command prefix; untyped extras forbidden"
+    ),
+    "message_str_includes_command": True,
+    "runtime_smoke": "AstrBot 4.27.4 typed binding OK; missing/type → framework error",
+}
+
+GENERIC_PKG_NAMES: frozenset[str] = frozenset(
     {"services", "handlers", "utils", "models", "core", "api", "common"}
 )
 
 # ── requirements / stdlib / bundled ────────────────────────────
 
-STDLIB_TOP_LEVEL: FrozenSet[str] = frozenset(
+STDLIB_TOP_LEVEL: frozenset[str] = frozenset(
     {
         "os",
         "sys",
@@ -101,6 +216,8 @@ STDLIB_TOP_LEVEL: FrozenSet[str] = frozenset(
         "zipfile",
         "tarfile",
         "gzip",
+        "mimetypes",
+        "wave",
         "secrets",
         "signal",
         "threading",
@@ -113,7 +230,7 @@ STDLIB_TOP_LEVEL: FrozenSet[str] = frozenset(
     }
 )
 
-ASTRBOT_BUNDLED: FrozenSet[str] = frozenset(
+ASTRBOT_BUNDLED: frozenset[str] = frozenset(
     {
         "aiohttp",
         "pydantic",
@@ -137,7 +254,7 @@ ASTRBOT_BUNDLED: FrozenSet[str] = frozenset(
 # ── scaffold types ─────────────────────────────────────────────
 # Full plugin-types set + adapter framework (S3). Adapter is not a Star plugin.
 
-SCAFFOLD_TYPES: Tuple[str, ...] = (
+SCAFFOLD_TYPES: tuple[str, ...] = (
     "command",
     "llm_tool",
     "session",
@@ -149,11 +266,11 @@ SCAFFOLD_TYPES: Tuple[str, ...] = (
 )
 
 # Types that produce a normal Star plugin tree (metadata + main Star class)
-STAR_PLUGIN_TYPES: FrozenSet[str] = frozenset(
+STAR_PLUGIN_TYPES: frozenset[str] = frozenset(
     {"command", "llm_tool", "session", "cron", "hook", "web", "agent"}
 )
 
-TYPE_REQUIREMENTS: Dict[str, List[str]] = {
+TYPE_REQUIREMENTS: dict[str, list[str]] = {
     "command": [],
     "llm_tool": ["aiohttp>=3.9.0"],
     "session": [],
@@ -166,7 +283,7 @@ TYPE_REQUIREMENTS: Dict[str, List[str]] = {
 
 # Docs MCP validate_import — single source (checklist §1 + FIX-00)
 # symbol → (correct_import, common_wrong_or_None)
-IMPORT_TABLE: Dict[str, Tuple[str, str | None]] = {
+IMPORT_TABLE: dict[str, tuple[str, str | None]] = {
     "logger": (
         "from astrbot.api import logger",
         "from astrbot.api.logger import logger",
@@ -201,8 +318,9 @@ IMPORT_TABLE: Dict[str, Tuple[str, str | None]] = {
         "from astrbot.api import LLMResponse",
     ),
     "Comp": (
+        # Official style is module alias, not a class export (components.py has no Comp class).
+        "import astrbot.api.message_components as Comp",
         "from astrbot.api.message_components import Comp",
-        "from astrbot.api import Comp",
     ),
     "Plain": (
         "from astrbot.api.message_components import Plain",
@@ -266,29 +384,65 @@ IMPORT_TABLE: Dict[str, Tuple[str, str | None]] = {
         None,
     ),
     "register_platform_adapter": (
-        "from astrbot.core.platform.register import register_platform_adapter",
+        # Official public API (plugin-platform-adapter.md + astrbot/api/platform/__init__.py).
+        # Prefer public re-exports for next-core compatibility; core path also works.
+        "from astrbot.api.platform import register_platform_adapter",
+        "from astrbot.api import register_platform_adapter",
+    ),
+    "MessageSession": (
+        "from astrbot.core.platform.message_session import MessageSession",
         None,
+    ),
+    "MessageSesion": (
+        # Official docs use the historical typo alias MessageSesion.
+        "from astrbot.core.platform.message_session import MessageSesion",
+        "from astrbot.core.platform.astr_message_event import MessageSesion",
     ),
     "At": ("from astrbot.api.message_components import At", None),
     "Record": ("from astrbot.api.message_components import Record", None),
     "Video": ("from astrbot.api.message_components import Video", None),
     "html_renderer": ("from astrbot.api import html_renderer", None),
+    # Official plugin-pages.md: prefer astrbot.api.web over raw Quart for new plugins.
+    "request": (
+        "from astrbot.api.web import request",
+        "from quart import request",
+    ),
+    "json_response": (
+        "from astrbot.api.web import json_response",
+        "from quart import jsonify",
+    ),
+    "error_response": (
+        "from astrbot.api.web import error_response",
+        None,
+    ),
+    "file_response": (
+        "from astrbot.api.web import file_response",
+        None,
+    ),
+    "stream_response": (
+        "from astrbot.api.web import stream_response",
+        None,
+    ),
+    "PluginUploadFile": (
+        "from astrbot.api.web import PluginUploadFile",
+        None,
+    ),
 }
 
 
-def lookup_import(symbol: str) -> Tuple[str, str | None] | None:
+def lookup_import(symbol: str) -> tuple[str, str | None] | None:
     """Return (correct, wrong_or_none) for exact symbol, or None."""
     return IMPORT_TABLE.get((symbol or "").strip())
 
 
-def fuzzy_import_symbols(symbol: str, limit: int = 5) -> List[str]:
+def fuzzy_import_symbols(symbol: str, limit: int = 5) -> list[str]:
     s = (symbol or "").strip().lower()
     if not s:
         return []
     return [k for k in IMPORT_TABLE if s in k.lower()][:limit]
 
 
-SCAFFOLD_IMPORT_LINES: Dict[str, List[str]] = {
+SCAFFOLD_IMPORT_LINES: dict[str, list[str]] = {
     "command": [
         "from astrbot.api import logger",
         "from astrbot.api.event import filter, AstrMessageEvent",
@@ -328,7 +482,8 @@ SCAFFOLD_IMPORT_LINES: Dict[str, List[str]] = {
         "from astrbot.api import logger",
         "from astrbot.api.event import filter, AstrMessageEvent",
         "from astrbot.api.star import Context, Star, StarTools",
-        "from quart import jsonify",
+        # Official guides/plugin-pages.md — prefer astrbot.api.web (quart still bundled for legacy)
+        "from astrbot.api.web import json_response, request",
     ],
     "agent": [
         "import aiohttp",
@@ -346,15 +501,22 @@ SCAFFOLD_IMPORT_LINES: Dict[str, List[str]] = {
         "from astrbot.api import logger",
         "from astrbot.api.event import MessageChain",
         "from astrbot.api.message_components import Plain",
-        "from astrbot.api.platform import Platform, PlatformMetadata",
-        "from astrbot.core.platform.register import register_platform_adapter",
-        "from astrbot.core.platform import AstrBotMessage, MessageMember, MessageType",
+        # Official plugin-platform-adapter.md public surface
+        "from astrbot.api.platform import (",
+        "    Platform,",
+        "    AstrBotMessage,",
+        "    MessageMember,",
+        "    MessageType,",
+        "    PlatformMetadata,",
+        "    register_platform_adapter,",
+        ")",
+        "from astrbot.core.platform.message_session import MessageSesion",
     ],
 }
 
 # FIX-06 oriented: attribute names that commonly collide with Platform base.
 # Heuristic for adapter profile review — not exhaustive of core source.
-ADAPTER_PLATFORM_RESERVED_ATTRS: FrozenSet[str] = frozenset(
+ADAPTER_PLATFORM_RESERVED_ATTRS: frozenset[str] = frozenset(
     {
         "client",
         "config",
@@ -371,16 +533,14 @@ ADAPTER_PLATFORM_RESERVED_ATTRS: FrozenSet[str] = frozenset(
 # Keys that register_platform_adapter auto-fills when absent (official register.py).
 # Authors should omit these from default_config_tmpl; re-listing is redundant and
 # can confuse WebUI metadata — reviewer warns, does not hard-fail.
-ADAPTER_CONFIG_CORE_INJECTED_KEYS: FrozenSet[str] = frozenset(
-    {"id", "enable", "type"}
-)
+ADAPTER_CONFIG_CORE_INJECTED_KEYS: frozenset[str] = frozenset({"id", "enable", "type"})
 
 # Core SHARED platform metadata field names (astrbot/core/config/default.py
 # platform_group.metadata.platform.items + register.py injects). config_service
 # merges every adapter's config_metadata into this ONE dict by field name via
 # items.update(...) — redefining these names overwrites the built-in entry
 # (and its condition) for ALL adapters' forms. Prefix custom fields instead.
-ADAPTER_CONFIG_CORE_BUILTIN_KEYS: FrozenSet[str] = frozenset(
+ADAPTER_CONFIG_CORE_BUILTIN_KEYS: frozenset[str] = frozenset(
     {
         "id",
         "enable",
@@ -392,7 +552,7 @@ ADAPTER_CONFIG_CORE_BUILTIN_KEYS: FrozenSet[str] = frozenset(
     }
 )
 
-ADAPTER_REQUIRED_METHODS: FrozenSet[str] = frozenset({"run", "meta", "send_by_session"})
+ADAPTER_REQUIRED_METHODS: frozenset[str] = frozenset({"run", "meta", "send_by_session"})
 
 
 def validate_plugin_name(name: str) -> str | None:
@@ -414,9 +574,7 @@ def validate_adapter_id(adapter_id: str) -> str | None:
     if not n:
         return "adapter id is required"
     if not re.match(r"^[a-z][a-z0-9_]{1,63}$", n):
-        return (
-            f"invalid adapter id {n!r}: use lowercase [a-z][a-z0-9_]*, length 2-64"
-        )
+        return f"invalid adapter id {n!r}: use lowercase [a-z][a-z0-9_]*, length 2-64"
     return None
 
 

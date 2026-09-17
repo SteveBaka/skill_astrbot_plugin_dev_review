@@ -4,6 +4,7 @@ Uses the real example plugin plugin-types/type2-session-waiter as the primary
 fixture (project decision: test against shipped examples for precision), plus
 tmp_path-built trees for exclusion edge cases.
 """
+
 from __future__ import annotations
 
 import io
@@ -215,16 +216,12 @@ class TestNaming:
 
     def test_zip_filename_variants(self):
         assert (
-            zip_filename_from_metadata(
-                metadata_name="astrbot_plugin_x", metadata_version="v1.2.3"
-            )
+            zip_filename_from_metadata(metadata_name="astrbot_plugin_x", metadata_version="v1.2.3")
             == "astrbot_plugin_x-1.2.3.zip"
         )
         assert (
-            zip_filename_from_metadata(metadata_name="astrbot_plugin_x")
-            == "astrbot_plugin_x.zip"
+            zip_filename_from_metadata(metadata_name="astrbot_plugin_x") == "astrbot_plugin_x.zip"
         )
         assert (
-            zip_filename_from_metadata(metadata_name="", fallback_root="dirname")
-            == "dirname.zip"
+            zip_filename_from_metadata(metadata_name="", fallback_root="dirname") == "dirname.zip"
         )

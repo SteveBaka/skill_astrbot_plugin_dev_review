@@ -15,11 +15,11 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .contracts import (
+    SCAFFOLD_ASTRBOT_VERSION,
     SCAFFOLD_TYPES,
-    STAR_PLUGIN_TYPES,
     TYPE_REQUIREMENTS,
     command_default_from_name,
     slug_to_adapter_class_name,
@@ -72,7 +72,8 @@ def _render_metadata(name: str, author: str, desc: str, display: str) -> str:
         f"version: 0.1.0\n"
         f"author: {author}\n"
         f"repo: \n"
-        f'astrbot_version: ">=4.26.8"\n'
+        # Skill contract floor (contracts.SCAFFOLD_ASTRBOT_VERSION); official teaching examples may show >=4.16,<5
+        f'astrbot_version: "{SCAFFOLD_ASTRBOT_VERSION}"\n'
     )
 
 
@@ -115,9 +116,7 @@ class {class_name}(Star):
 '''
 
 
-def _render_llm_tool_main(
-    class_name: str, command: str, tool_name: str, tool_desc: str
-) -> str:
+def _render_llm_tool_main(class_name: str, command: str, tool_name: str, tool_desc: str) -> str:
     return f'''import aiohttp
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
@@ -386,11 +385,12 @@ class {class_name}(Star):
 
 
 def _render_web_main(class_name: str, command: str, plugin_name: str) -> str:
+    # Official guides/plugin-pages.md — astrbot.api.web helpers (not raw Quart).
     return f'''import time
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, StarTools
-from quart import jsonify
+from astrbot.api.web import json_response, request
 
 
 PLUGIN_NAME = "{plugin_name}"
@@ -417,7 +417,7 @@ class {class_name}(Star):
 
     async def api_status(self):
         uptime = int(time.time() - self.start_time)
-        return jsonify({{"status": "running", "uptime_seconds": uptime}})
+        return json_response({{"status": "running", "uptime_seconds": uptime}})
 
     @filter.command("{command}")
     async def cmd_{command}(self, event: AstrMessageEvent):
@@ -495,13 +495,21 @@ class {class_name}(Star):
 
 def _render_adapter_main(adapter_id: str, class_name: str) -> str:
     """Framework-only adapter: required methods + no reserved attr shadowing."""
+    # Official docs/en/dev/plugin-platform-adapter.md — public import path + MessageSesion alias.
     return f'''import asyncio
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 from astrbot.api.message_components import Plain
-from astrbot.api.platform import Platform, PlatformMetadata
+from astrbot.api.platform import (
+    Platform,
+    AstrBotMessage,
+    MessageMember,
+    MessageType,
+    PlatformMetadata,
+    register_platform_adapter,
+)
 from astrbot.api.star import Context, Star
-from astrbot.core.platform.register import register_platform_adapter
+from astrbot.core.platform.message_session import MessageSesion
 
 
 @register_platform_adapter(
@@ -539,10 +547,12 @@ class {class_name}(Platform):
         platform_settings: dict,
         event_queue: asyncio.Queue,
     ):
-        super().__init__(platform_config, event_queue)
+        # Official plugin-platform-adapter.md: Platform.__init__(event_queue)
+        super().__init__(event_queue)
+        self.config = platform_config
         self._settings = platform_settings
         self._running = False
-        # Do NOT assign self.client / self.config / self.event_queue (FIX-06)
+        # Do NOT assign self.client / self.event_queue (FIX-06)
 
     def meta(self) -> PlatformMetadata:
         return PlatformMetadata(
@@ -559,7 +569,12 @@ class {class_name}(Platform):
             await asyncio.sleep(3600)
         # === BUSINESS END ===
 
-    async def send_by_session(self, session, message_chain: MessageChain):
+    async def send_by_session(
+        self,
+        session: MessageSesion,
+        message_chain: MessageChain,
+    ):
+        # Official type alias MessageSesion (message_session); reply target = session id
         # === BUSINESS START ===
         logger.info(f"send_by_session stub session={{session}} chain={{message_chain}}")
         # === BUSINESS END ===
@@ -630,7 +645,7 @@ def scaffold_plugin(
     desc: str = "",
     overwrite: bool = False,
     extra_files_json: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create plugin or adapter-frame directory; run matching reviewer (error=0).
 
@@ -657,7 +672,7 @@ def scaffold_plugin(
         }
 
     # parse extra files (validate before writing anything)
-    extra_files: Dict[str, str] = {}
+    extra_files: dict[str, str] = {}
     if (extra_files_json or "").strip():
         try:
             parsed = json.loads(extra_files_json)
@@ -673,10 +688,7 @@ def scaffold_plugin(
                     return {
                         "ok": False,
                         "error_kind": "bad_extra_files",
-                        "error": (
-                            f"disallowed file {rel!r}; allowed: "
-                            f"{sorted(_EXTRA_FILE_ALLOW)}"
-                        ),
+                        "error": (f"disallowed file {rel!r}; allowed: {sorted(_EXTRA_FILE_ALLOW)}"),
                     }
                 extra_files[rel] = str(content)
         except json.JSONDecodeError as exc:
@@ -751,7 +763,7 @@ def scaffold_plugin(
     }
     files.update(extra_files)  # agent-provided files win over skeleton
 
-    written: List[str] = []
+    written: list[str] = []
     for rel, content in files.items():
         (target / rel).write_text(content, encoding="utf-8")
         written.append(rel)
@@ -760,7 +772,7 @@ def scaffold_plugin(
     errors = [f.to_dict() for f in report.findings if f.severity == "error"]
     ok = report.ok and not errors
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "ok": ok,
         "path": str(target),
         "plugin_name": name,
@@ -798,7 +810,7 @@ def _scaffold_adapter(
     display_name: str,
     desc: str,
     overwrite: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     name is used as adapter_id (and folder astrbot_plugin_<id> or plain id folder).
     Prefer folder name astrbot_plugin_adapter_<id> if user passed full plugin-style name.
@@ -826,9 +838,7 @@ def _scaffold_adapter(
     display = (display_name or "").strip() or adapter_id.replace("_", " ").title()
     description = (desc or "").strip() or f"Adapter frame for {adapter_id}"
 
-    out_parent = (
-        Path(output_dir).expanduser().resolve() if output_dir.strip() else Path.cwd()
-    )
+    out_parent = Path(output_dir).expanduser().resolve() if output_dir.strip() else Path.cwd()
     target = out_parent / folder
     if target.exists() and any(target.iterdir()) and not overwrite:
         return {
@@ -855,7 +865,7 @@ def _scaffold_adapter(
     meta_name = folder if folder.startswith("astrbot_plugin_") else f"astrbot_plugin_{adapter_id}"
     files["metadata.yaml"] = _render_metadata(meta_name, author, description, display)
 
-    written: List[str] = []
+    written: list[str] = []
     for rel, content in files.items():
         (target / rel).write_text(content, encoding="utf-8")
         written.append(rel)

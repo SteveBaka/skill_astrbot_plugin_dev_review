@@ -65,10 +65,16 @@ MessageSession(
 ## Complete Adapter Example
 
 ```python
+# Official docs/en/dev/plugin-platform-adapter.md — public API surface
 from astrbot.api.platform import (
-    Platform, AstrBotMessage, MessageMember, MessageType, PlatformMetadata
+    Platform,
+    AstrBotMessage,
+    MessageMember,
+    MessageType,
+    PlatformMetadata,
+    register_platform_adapter,
 )
-from astrbot.core.platform.register import register_platform_adapter
+from astrbot.core.platform.message_session import MessageSesion
 from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import Plain
 
@@ -77,7 +83,9 @@ from astrbot.api.message_components import Plain
 })
 class MyPlatformAdapter(Platform):
     def __init__(self, platform_config: dict, platform_settings: dict, event_queue: asyncio.Queue):
-        super().__init__(platform_config, event_queue)
+        # Official: Platform.__init__(event_queue); core injects type/enable/id into config
+        super().__init__(event_queue)
+        self.config = platform_config
         self.settings = platform_settings
 
     def meta(self) -> PlatformMetadata:

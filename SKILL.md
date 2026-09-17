@@ -17,7 +17,7 @@ description: |
 metadata:
   short-description: AstrBot plugin dev + auto review
   version: "2.0"
-  compatibility: astrbot >=4.16 (recommend >=4.26.8 for current runtime / market / conf dict defaults)
+  compatibility: astrbot — **skill-generated plugins: `>=4.27,<5`** (contracts smoke-tested on 4.27.4: H1-B, public `astrbot.api.web`, notes ≥4.27). Official **teaching** examples may still show `>=4.16,<5` (ecosystem floor). Raise scaffold default to `>=4.28,<5` only after 4.28 adaptation when templates truly depend on 4.28-only APIs.
   license: MIT
 ---
 
@@ -68,6 +68,11 @@ Deliver (no git commit/push without explicit user approval)
 > **Authority order (high → low)**: (1) Official docs under `docs/en/dev/star/**` + adapter doc; (2) this skill; (3) historical pitfall notes. **Never** use legacy `docs/en/dev/plugin.md` as authority (redirect-only / obsolete). When skill conflicts with official docs, **official wins**.
 >
 > **Token rule**: read **on demand** — never bulk-load the whole skill tree. Prefer MCP `search_docs` / single checklist sections. Expand only when review finds a concrete gap.
+>
+> **Code quality** (applies to all generated code and commit messages):
+> - Comments: only write **non-obvious reasons** the code cannot express. No decorative/descriptive labels (e.g. `# ── section ──`), no `#` comments that just restate the next line, no intermediate attempts or dead branches left as comments.
+> - Commit messages: describe only the **final behavior** and any trade-off invisible in the diff. Never reference discarded attempts, never-chosen alternatives, or states that never shipped.
+> - PR descriptions: same rule — what the diff does, and why the diff approach was chosen over alternatives that **are visible in the diff** (e.g. a config knob vs hardcode). Omit everything else.
 
 ### Step 0: Understand User Intent
 
@@ -78,7 +83,7 @@ Deliver (no git commit/push without explicit user approval)
 | "Let AI call my API" | Add LLM tool | Official `star/guides/ai.md` + `agent/tools.md` |
 | "Fix this error" | Bug fix | Official docs for the API + skill FIX guide; prefer minimal diff |
 | "Review my code" | Full audit | **Phase 4B** full pipeline on ALL files |
-| "Add a scheduled task" | Add cron | Official + `agent/cron.md` |
+| "Add a scheduled task" | Add cron | `agent/cron.md` (no dedicated official cron guide) |
 | "Make a settings page" | WebUI | Official `star/guides/plugin-pages.md` + `webui/plugin-pages.md` |
 
 ### Step 0.2: Confirm Plugin Name & Author (GATE)
@@ -122,7 +127,7 @@ Suggested name: astrbot_plugin_<slug> — OK?
 | Read | Why |
 |------|-----|
 | `review/main-file-checklist.md` **§1 import table only** | Canonical import paths (FIX-00) |
-| `review/auto-fix-guide.md` **FIX-00** + **FIX-02** sections only | Wrong import module; handler extra params / `message_str` |
+| `review/auto-fix-guide.md` **FIX-00** + **FIX-02** sections only | Wrong import module; command arg policy (typed vs message_str remainder) |
 | `plugin-types/README.md` | Pick type (decision tree) |
 | **One** matching `plugin-types/type*/main.py` **or** `script/astrbot-plugin-demo` | Pattern copy — not all six types |
 
@@ -141,7 +146,7 @@ Types may combine. Decision tree: `plugin-types/README.md`.
 | Command | `@filter.command` | `references/plugin-patterns.md` | `star/guides/listen-message-event.md` |
 | LLM Tool | `FunctionTool` + `add_llm_tools` | `agent/tools.md` | `star/guides/ai.md` |
 | Session | `@session_waiter` | `references/plugin-patterns.md` | `star/guides/session-control.md` |
-| Cron | `cron_manager` | `agent/cron.md` | `star/guides/ai.md` + runtime |
+| Cron | `cron_manager` | `agent/cron.md` | *(no dedicated official guide — `guides/cron.md` does not exist)*; use skill + runtime/changelog |
 | Hook | `@filter.on_llm_*` etc. | `agent/hooks.md` | `star/guides/listen-message-event.md` |
 | Web API | `register_web_api` | `webui/plugin-pages.md` | `star/guides/plugin-pages.md` |
 | Agent | `tool_loop_agent` | `agent/invoke-llm.md` | `star/guides/ai.md` |
@@ -153,7 +158,8 @@ After type selection, fetch only what you need from `docs/en/dev/star/guides/` (
 
 | Type | Path under `docs/en/dev/` |
 |------|---------------------------|
-| LLM Tool / Agent / Cron | `star/guides/ai.md` |
+| LLM Tool / Agent | `star/guides/ai.md` |
+| Cron | No official `guides/cron.md` — follow skill `agent/cron.md` + core changelog/runtime |
 | Web API / pages | `star/guides/plugin-pages.md` |
 | Config | `star/guides/plugin-config.md` |
 | Session | `star/guides/session-control.md` |
@@ -183,7 +189,7 @@ Before running review, clean up the generated code to avoid wasting review cycle
 1. **Remove unused imports** — scan every `import X` / `from X import Y`, verify it's used
 2. **Remove dead code** — unused variables, unreachable branches, commented-out blocks
 3. **Deduplicate** — same list/data defined in multiple places → extract to shared constant
-4. **Verify `@filter.command` handlers** — no function parameters for user input, use `event.message_str`
+4. **Verify `@filter.command` arg style** — structured → annotated typed params; free-text → `event.message_str` remainder after stripping command prefix; no untyped extras (see Mandatory Command argument policy)
 5. **Verify `@dataclass` fields** — dict/list fields use `field(default_factory=...)`, not literals
 6. **Verify `__init__` signature** — if using config, must have `config: AstrBotConfig`
 
@@ -199,8 +205,8 @@ Validation rules: `review/metadata-validation.md`
 
 **Goal**: Prevent first-run crash / load failure. Full pass of `review/review-workflow.md` on **all new files**, with CRITICAL focus:
 
-- Imports (table §1), `async`/`await`, command handlers (`event.message_str`, docstrings)
-- No removed filters (`on_keyword` / …), correct hooks / no yield in hooks
+- Imports (table §1), `async`/`await`, command handlers (docstrings + **H1-B arg policy**: typed structured vs message_str remainder), command arg policy compliance
+- No nonexistent filter attrs (`on_keyword` / `on_full_match` / `on_regex` / `on_prefix` — never existed; see FIX-21); use verified `filter.*` only (incl. `filter.regex`); correct hooks / no yield in hooks
 - `__init__(context[, config])`, `super().__init__`, `field(default_factory=...)`, tools `return str`
 - `metadata.yaml` name/author, `_conf_schema.json` validity, `requirements.txt` cross-check
 - Namespace / `sys.path` if multi-module; `get_data_dir` only from Star
@@ -250,7 +256,7 @@ review/review-workflow.md (orchestrator)
   │       - API deprecation checks
   │
    └── Fix & Re-audit
-      └── review/auto-fix-guide.md (FIX-00 ~ FIX-29; dedupe by symptom, no parallel conflicting fixes)
+      └── review/auto-fix-guide.md (FIX-00 ~ FIX-38; dedupe by symptom, no parallel conflicting fixes)
 ```
 
 ### Two-Phase Review
@@ -306,10 +312,11 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 ### API & Imports
 
 - During code generation, fixing, and review — always reference official AstrBot dev docs. Do NOT guess API signatures. Official docs are authoritative; when this skill conflicts, defer to official docs.
+- **Public API preference (next-core)**: when both public and core paths load, generate **official public surface** — e.g. `from astrbot.api.platform import register_platform_adapter`, `from astrbot.api.web import json_response, request`. Core/Quart paths remain valid for legacy; do not invent internal-only APIs. <!-- Source: plugin-platform-adapter.md + plugin-pages.md -->
 - `__init__` must accept `context: Context`. If using config, add `config: AstrBotConfig` and call `self.config = config` <!-- Source: guides/plugin-config.md -->
 - Logging must use `from astrbot.api import logger` <!-- Source: guides/simple.md -->
 - `filter` must be from `astrbot.api.event.filter` <!-- Source: guides/listen-message-event.md -->
-- `@filter.on_keyword`, `@filter.on_full_match`, `@filter.on_regex` are **REMOVED** in v4.x — use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching <!-- Source: real-world bug, AstrBot v4.25.2 -->
+- `@filter.on_keyword`, `@filter.on_full_match`, `@filter.on_prefix`, `@filter.on_regex` **never existed** in AstrBot (not "removed in v4.x") — use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching; `@filter.regex` is the verified regex decorator <!-- Source: FIX-21 provenance + astrbot/api/event/filter/__init__.py -->
 - Every import path must be verified against `review/main-file-checklist.md` §1
 - In `@dataclass` classes, dict/list fields MUST use `field(default_factory=lambda: {...})`, not direct dict/list literals <!-- Source: real-world bug -->
 - `context.register_llm_tool()` is DEPRECATED — use `context.add_llm_tools()` <!-- Source: guides/ai.md -->
@@ -319,7 +326,11 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 
 - All handlers must use `async def` <!-- Source: guides/listen-message-event.md -->
 - All `@filter.command` must have a docstring (WebUI displays it) <!-- Source: guides/simple.md -->
-- Do NOT use function parameters for user text input — use `event.message_str.strip()` <!-- Source: real-world bug -->
+- **Command argument policy (H1-B, binding constraint for codegen models)** — official typed params are valid; AstrBot **4.27.4 smoke** confirmed typed `int`/`str`/command_group params work; `got multiple values` is **not** a blanket ban. Models **MUST** pick exactly one style per command:
+  1. **Structured / numeric / flags** → typed function params with **explicit annotations** (`a: int, b: int`, `flag: bool = False`). Do **not** invent untyped extras.
+  2. **Free-text remainder** (spaces, quotes, URLs) → **no extra function params**; parse from `event.message_str` and **strip the command prefix yourself** (runtime message_str is the **full plaintext**, e.g. `skillprobe hello`, not only `hello`).
+  3. **Never** mix unannotated extras + free-text defaults just to “look like Python”; **never** invent APIs (`on_keyword`, wrong imports). When unsure → typed numeric or message_str remainder — not both.
+  4. Review gate: untyped extras = 🟡 FIX-02 warning; free-text `str` extras = 🟡 recommend message_str remainder; annotated `int`/`float`/`bool` extras = 🔵 info (allowed). <!-- Source: official listen-message-event.md + 4.27.4 smoke H1 -->
 - `@filter.command_group` must use function pattern (`def math(): pass`), NOT class <!-- Source: guides/listen-message-event.md -->
 - `@filter.permission_type` cannot combine with `@filter.llm_tool` <!-- Source: guides/listen-message-event.md -->
 - `@filter.llm_tool` Args: must follow `param_name(type): description` <!-- Source: guides/ai.md -->
@@ -335,6 +346,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 ### Project, Gates & Review
 
 - **Identity gate**: before scaffold, confirm plugin `name` = `astrbot_plugin_<slug>` and `author` with the user
+- **Version gate (load floor)**: skill-generated `metadata.astrbot_version` defaults to **`">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`). Official teaching range `">=4.16,<5"` is **not** the scaffold default — metadata is a **hard load gate**, not a soft hint. If the user's core is older, either narrow APIs to what that core has **and** write a matching range, or they must upgrade / ignore-install knowingly. **Do not** emit `">=4.28,<5"` until 4.28-breaking templates are actually in use.
 - **Pre-code gate (Step 0.5)**: official Always-Read + import table §1 + FIX-00/02 + one type example — **before** first `main.py`; no coding from bare memory for astrbot imports/handlers
 - After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable; prefer MCP `astrbot_review_path` then open only matching FIX sections
 - After features complete or user audit request, run **Phase B** full-tree review (accuracy, security, completeness)
@@ -399,7 +411,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - Plugin naming: start with `astrbot_plugin_`, lowercase, no spaces, concise <!-- Source: plugin-new.md -->
 - `short_desc` field in metadata.yaml: one-line summary for marketplace cards; falls back to `desc` if omitted <!-- Source: plugin-new.md -->
 - `support_platforms` field: list of platform keys (e.g., `telegram`, `discord`, `aiocqhttp`) <!-- Source: plugin-new.md -->
-- `astrbot_version` field: PEP 440 format, no `v` prefix (e.g., `>=4.16,<5`) <!-- Source: plugin-new.md -->
+- `astrbot_version` field: PEP 440 format, no `v` prefix. **Skill scaffold default: `">=4.27,<5"`** (matches generated contracts). Official docs examples may show `">=4.16,<5"` — use that **only** for plugins that stay on the ancient public surface (Star + command + logger) and were verified on older cores. Do not invent `v` prefixes. <!-- Source: plugin-new.md + skill contract floor -->
 - `skills/` directory: bundle Skill definitions with plugin; auto-registered by AstrBot <!-- Source: plugin-new.md -->
 - Plugin enabled ≠ every LLM tool enabled — WebUI can disable tools independently (≥4.26.0 / 4.26.2) <!-- Source: releases -->
 - Plugin uninstall clears plugin KV storage (≥4.26.2) — do not assume KV survives uninstall <!-- Source: releases -->
@@ -558,7 +570,7 @@ skill_astrbot_plugin_dev_review/
 │   ├── metadata-validation.md            # Structure validation
 │   ├── main-file-checklist.md            # main.py 10 checks + import table
 │   ├── general-file-checklist.md         # General code 5-dimension review
-│   └── auto-fix-guide.md                 # 20 fix patterns (FIX-00 ~ FIX-19)
+│   └── auto-fix-guide.md                 # 39 fix patterns (FIX-00 ~ FIX-38)
 │
 ├── plugin-types/                         # Plugin type examples
 │   ├── README.md                         # Type selection guide

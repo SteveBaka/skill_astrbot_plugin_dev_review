@@ -28,7 +28,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # ── desensitization patterns ───────────────────────────────────
 
@@ -73,8 +73,8 @@ def fingerprint_of(
     error: str,
     traceback_text: str = "",
     error_class: str = "",
-    fix_rule: Optional[str] = None,
-) -> Tuple[str, str, Dict[str, Any]]:
+    fix_rule: str | None = None,
+) -> tuple[str, str, dict[str, Any]]:
     """
     Return (key, desensitized_sample, meta).
 
@@ -86,7 +86,7 @@ def fingerprint_of(
     tb_tail = "\n".join(tb.splitlines()[-2:]) if tb else ""
     sample = desensitize(f"{error}\n{tb_tail}")
     hashed = hashlib.sha256(sample.encode("utf-8")).hexdigest()[:20]
-    meta: Dict[str, Any] = {
+    meta: dict[str, Any] = {
         "error_class": error_class or None,
         "fix_rule": fix_rule or None,
     }
@@ -99,9 +99,9 @@ def fingerprint_of(
 class FingerprintStore:
     """Append-only local store of desensitized error fingerprints (opt-in)."""
 
-    def __init__(self, path: Optional[str | Path] = None) -> None:
+    def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path).expanduser().resolve() if path else None
-        self.records: Dict[str, Dict[str, Any]] = {}
+        self.records: dict[str, dict[str, Any]] = {}
         if self.path and self.path.is_file():
             self.load()
 
@@ -117,16 +117,14 @@ class FingerprintStore:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"updated_at": int(time.time()), "records": self.records}
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def record(
         self,
         error: str,
         traceback_text: str = "",
         error_class: str = "",
-        fix_rule: Optional[str] = None,
+        fix_rule: str | None = None,
         source: str = "",
     ) -> str:
         key, sample, meta = fingerprint_of(
@@ -153,9 +151,7 @@ class FingerprintStore:
             self.save()
         return key
 
-    def record_analysis(
-        self, diagnoses: List[Dict[str, Any]], source: str = ""
-    ) -> int:
+    def record_analysis(self, diagnoses: list[dict[str, Any]], source: str = "") -> int:
         """Record every diagnosis from analyze_failed_payload (returns count)."""
         n = 0
         for d in diagnoses or []:
@@ -169,14 +165,14 @@ class FingerprintStore:
             n += 1
         return n
 
-    def unclassified(self, min_occurrences: int = 1) -> List[Dict[str, Any]]:
+    def unclassified(self, min_occurrences: int = 1) -> list[dict[str, Any]]:
         return [
             r
             for r in self.records.values()
             if not r.get("fix_rule") and int(r.get("count", 0)) >= min_occurrences
         ]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "path": str(self.path) if self.path else None,
             "total_records": len(self.records),
@@ -187,9 +183,7 @@ class FingerprintStore:
 # ── env-gated recording hook (used by install / smoke failure paths) ─
 
 
-def record_diagnoses_if_enabled(
-    diagnoses: List[Dict[str, Any]], source: str = ""
-) -> int:
+def record_diagnoses_if_enabled(diagnoses: list[dict[str, Any]], source: str = "") -> int:
     """
     Record diagnoses into the KB only when ASTRBOT_ERROR_KB points to a store path.
 
@@ -224,11 +218,11 @@ def max_fix_number(guide_path: str | Path) -> int:
 
 
 def validate_fix_entry(
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
     guide_path: str | Path,
     *,
     min_concrete_tokens: int = 3,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Pre-approval validation: reject duplicates and non-actionable proposals.
 
@@ -242,7 +236,7 @@ def validate_fix_entry(
 
     Returns {"ok": bool, "reasons": [str]}.
     """
-    reasons: List[str] = []
+    reasons: list[str] = []
     sample = (entry.get("sample") or "").strip()
     if not sample:
         reasons.append("empty_sample")
@@ -256,14 +250,10 @@ def validate_fix_entry(
     elif stripped and not stripped.strip():
         reasons.append("placeholder_only")
     tokens = [
-        t
-        for t in re.split(r"\s+", sample)
-        if t and t not in PLACEHOLDER_TOKENS and len(t) >= 4
+        t for t in re.split(r"\s+", sample) if t and t not in PLACEHOLDER_TOKENS and len(t) >= 4
     ]
     if len(tokens) < min_concrete_tokens:
-        reasons.append(
-            f"too_generic:{len(tokens)}_concrete_tokens<{min_concrete_tokens}"
-        )
+        reasons.append(f"too_generic:{len(tokens)}_concrete_tokens<{min_concrete_tokens}")
 
     pattern = entry.get("pattern") or ""
     if pattern:
@@ -294,7 +284,7 @@ def propose_fix_entries(
     *,
     min_occurrences: int = 2,
     max_entries: int = 5,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Draft auto-fix-guide sections for recurring unclassified fingerprints.
 
@@ -305,7 +295,7 @@ def propose_fix_entries(
     unclassified = store.unclassified(min_occurrences=min_occurrences)
     unclassified.sort(key=lambda r: int(r.get("count", 0)), reverse=True)
     start = max_fix_number(guide_path) + 1
-    entries: List[Dict[str, Any]] = []
+    entries: list[dict[str, Any]] = []
     for i, rec in enumerate(unclassified[:max_entries]):
         sample = rec.get("sample", "")
         # escape regex metacharacters except the <PLACEHOLDER> markers
@@ -330,9 +320,9 @@ def propose_fix_entries(
     return entries
 
 
-def render_fix_entries(entries: List[Dict[str, Any]]) -> str:
+def render_fix_entries(entries: list[dict[str, Any]]) -> str:
     """Render proposed entries as a paste-ready auto-fix-guide.md section."""
-    lines: List[str] = []
+    lines: list[str] = []
     for e in entries:
         lines.append(f"### {e['fix_rule']}: {e['title']}")
         lines.append("")
@@ -348,7 +338,9 @@ def render_fix_entries(entries: List[Dict[str, Any]]) -> str:
         lines.append(f're.compile(r"{e["pattern"]}")')
         lines.append("```")
         lines.append("")
-        lines.append(f"**Occurrences**: {e['occurrences']} · **sources**: {', '.join(e['sources'] or [])}")
+        lines.append(
+            f"**Occurrences**: {e['occurrences']} · **sources**: {', '.join(e['sources'] or [])}"
+        )
         lines.append("")
         lines.append(f"**Hint**: {e['hint']}")
         lines.append("")

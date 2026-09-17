@@ -23,12 +23,12 @@ Design:
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # ── error signature → (error_class, fix_rule, hint) ────────────
 # Ordered: first match wins; most specific patterns first.
 # fix_rule refers to review/auto-fix-guide.md; None = no direct FIX entry.
-_SIGNATURES: List[Tuple[re.Pattern[str], str, Optional[str], str]] = [
+_SIGNATURES: list[tuple[re.Pattern[str], str, str | None, str]] = [
     (
         re.compile(r"No module named ['\"]astrbot\.api\.logger['\"]"),
         "wrong_import_path",
@@ -65,8 +65,10 @@ _SIGNATURES: List[Tuple[re.Pattern[str], str, Optional[str], str]] = [
         re.compile(r"got multiple values for argument"),
         "handler_signature",
         "FIX-02",
-        "Command handler parameter binding conflict. Read user input from "
-        "event.message_str instead of extra function parameters.",
+        "Command handler parameter binding conflict (historical/edge). "
+        "Apply H1-B: structured args → annotated typed params; free-text → "
+        "event.message_str remainder after stripping the command prefix. "
+        "Do not ban all function parameters (4.27.4 typed binding works).",
     ),
     (
         re.compile(r"ToolExecResult"),
@@ -103,8 +105,7 @@ _SIGNATURES: List[Tuple[re.Pattern[str], str, Optional[str], str]] = [
         re.compile(r"__init__\(\) (takes|missing)"),
         "init_signature",
         "FIX-01",
-        "Star subclass __init__ signature mismatch (missing super().__init__ "
-        "or wrong parameters).",
+        "Star subclass __init__ signature mismatch (missing super().__init__ or wrong parameters).",
     ),
     (
         re.compile(r"metadata\.yaml|yaml\.(parser|scanner)|ScannerError|ParserError", re.I),
@@ -150,7 +151,7 @@ def _truncate(s: str, limit: int) -> str:
     return s if len(s) <= limit else s[:limit] + "…"
 
 
-def classify_error(error: str, traceback_text: str = "") -> Dict[str, Any]:
+def classify_error(error: str, traceback_text: str = "") -> dict[str, Any]:
     """Classify one error+traceback into {error_class, fix_rule, hint}."""
     haystack = f"{error}\n{traceback_text}"
     for pattern, error_class, fix_rule, hint in _SIGNATURES:
@@ -168,7 +169,7 @@ def classify_error(error: str, traceback_text: str = "") -> Dict[str, Any]:
 
 def extract_plugin_frames(
     traceback_text: str, dir_name: str = "", max_frames: int = 3
-) -> List[str]:
+) -> list[str]:
     """
     Pull the most relevant `File "...", line N` frames from a traceback.
 
@@ -188,7 +189,7 @@ def extract_plugin_frames(
     return formatted[-max_frames:]
 
 
-def traceback_tail(traceback_text: str, max_lines: int = 6, line_limit: int = 200) -> List[str]:
+def traceback_tail(traceback_text: str, max_lines: int = 6, line_limit: int = 200) -> list[str]:
     """Last N non-empty traceback lines (the exception + raise site)."""
     if not traceback_text:
         return []
@@ -196,7 +197,7 @@ def traceback_tail(traceback_text: str, max_lines: int = 6, line_limit: int = 20
     return [_truncate(ln, line_limit) for ln in lines[-max_lines:]]
 
 
-def analyze_failed_record(dir_name: str, record: Any) -> Dict[str, Any]:
+def analyze_failed_record(dir_name: str, record: Any) -> dict[str, Any]:
     """
     Analyze one failed-plugin record from GET /plugins/failed.
 
@@ -210,7 +211,7 @@ def analyze_failed_record(dir_name: str, record: Any) -> Dict[str, Any]:
 
     error = str(record.get("error") or "")
     tb = str(record.get("traceback") or "")
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "dir_name": dir_name,
         "plugin_name": record.get("name") or dir_name,
         "version": record.get("version"),
@@ -223,7 +224,7 @@ def analyze_failed_record(dir_name: str, record: Any) -> Dict[str, Any]:
     return out
 
 
-def analyze_failed_payload(payload: Any) -> Dict[str, Any]:
+def analyze_failed_payload(payload: Any) -> dict[str, Any]:
     """
     Analyze the whole /plugins/failed response payload.
 
@@ -237,7 +238,7 @@ def analyze_failed_payload(payload: Any) -> Dict[str, Any]:
         return {"failed_count": 0, "diagnoses": [], "by_class": {}}
 
     diagnoses = [analyze_failed_record(k, v) for k, v in data.items()]
-    by_class: Dict[str, int] = {}
+    by_class: dict[str, int] = {}
     for d in diagnoses:
         by_class[d["error_class"]] = by_class.get(d["error_class"], 0) + 1
     return {

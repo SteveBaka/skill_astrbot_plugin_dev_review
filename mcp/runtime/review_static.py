@@ -21,7 +21,7 @@ import ast
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from .contracts import (
     ADAPTER_CONFIG_CORE_BUILTIN_KEYS,
@@ -30,6 +30,7 @@ from .contracts import (
     ADAPTER_REQUIRED_METHODS,
     ASTRBOT_BUNDLED,
     DEPRECATED_FILTER_ATTRS,
+    FILTER_ATTR_KNOWN,
     GENERIC_PKG_NAMES,
     STDLIB_TOP_LEVEL,
     WRONG_FROM_API,
@@ -43,14 +44,14 @@ _ASTRBOT_BUNDLED = ASTRBOT_BUNDLED
 
 @dataclass
 class Finding:
-    rule: str            # FIX-xx or META-xx / REQ-xx
-    severity: str        # error | warning | info
+    rule: str  # FIX-xx or META-xx / REQ-xx
+    severity: str  # error | warning | info
     file: str
     line: int
     message: str
     hint: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -59,14 +60,14 @@ class ReviewReport:
     ok: bool = True
     plugin_dir: str = ""
     files_checked: int = 0
-    findings: List[Finding] = field(default_factory=list)
-    counts: Dict[str, int] = field(default_factory=dict)
-    error: Optional[str] = None
+    findings: list[Finding] = field(default_factory=list)
+    counts: dict[str, int] = field(default_factory=dict)
+    error: str | None = None
 
     def add(self, f: Finding) -> None:
         self.findings.append(f)
 
-    def finalize(self) -> "ReviewReport":
+    def finalize(self) -> ReviewReport:
         self.counts = {"error": 0, "warning": 0, "info": 0}
         for f in self.findings:
             self.counts[f.severity] = self.counts.get(f.severity, 0) + 1
@@ -76,7 +77,7 @@ class ReviewReport:
         self.findings.sort(key=lambda f: (sev_rank.get(f.severity, 9), f.file, f.line))
         return self
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "ok": self.ok,
             "plugin_dir": self.plugin_dir,
@@ -95,11 +96,11 @@ class _FileChecker(ast.NodeVisitor):
         self.rel = rel_path
         self.tree = tree
         self.source = source
-        self.findings: List[Finding] = []
-        self.imported_names: Dict[str, int] = {}      # name -> lineno
-        self.used_names: Set[str] = set()
-        self.top_level_modules: Set[str] = set()      # for requirements cross-check
-        self.star_class_stack: List[bool] = []        # inside Star subclass?
+        self.findings: list[Finding] = []
+        self.imported_names: dict[str, int] = {}  # name -> lineno
+        self.used_names: set[str] = set()
+        self.top_level_modules: set[str] = set()  # for requirements cross-check
+        self.star_class_stack: list[bool] = []  # inside Star subclass?
         self.has_sys_path_insert = "sys.path.insert" in source
 
     def out(self, rule: str, sev: str, line: int, msg: str, hint: str = "") -> None:
@@ -114,7 +115,9 @@ class _FileChecker(ast.NodeVisitor):
             self.imported_names[alias.asname or top] = node.lineno
             if alias.name == "requests":
                 self.out(
-                    "FIX-04", "error", node.lineno,
+                    "FIX-04",
+                    "error",
+                    node.lineno,
                     "sync `requests` library imported",
                     "Use aiohttp or httpx (async) — requests blocks the event loop.",
                 )
@@ -126,7 +129,9 @@ class _FileChecker(ast.NodeVisitor):
             self.top_level_modules.add(mod.split(".")[0])
         if mod in WRONG_IMPORT_MODULES:
             self.out(
-                "FIX-00", "error", node.lineno,
+                "FIX-00",
+                "error",
+                node.lineno,
                 f"import from non-existent module `{mod}`",
                 f"Correct: {WRONG_IMPORT_MODULES[mod]}",
             )
@@ -134,13 +139,17 @@ class _FileChecker(ast.NodeVisitor):
             for alias in node.names:
                 if alias.name in WRONG_FROM_API:
                     self.out(
-                        "FIX-00", "error", node.lineno,
+                        "FIX-00",
+                        "error",
+                        node.lineno,
                         f"`{alias.name}` is not importable from astrbot.api",
                         f"Correct: {WRONG_FROM_API[alias.name]}",
                     )
         if mod == "requests" or mod.startswith("requests."):
             self.out(
-                "FIX-04", "error", node.lineno,
+                "FIX-04",
+                "error",
+                node.lineno,
                 "sync `requests` library imported",
                 "Use aiohttp or httpx (async).",
             )
@@ -157,16 +166,21 @@ class _FileChecker(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        # deprecated filter APIs: filter.on_keyword etc.
+        # unknown/non-existent filter attrs: filter.on_keyword etc. (never existed)
+        # Known surface is contracts.FILTER_ATTR_KNOWN (not a "removed in v4" list).
         if (
             isinstance(node.value, ast.Name)
             and node.value.id == "filter"
-            and node.attr in DEPRECATED_FILTER_ATTRS
+            and node.attr not in FILTER_ATTR_KNOWN
+            and node.attr not in DEPRECATED_FILTER_ATTRS
         ):
             self.out(
-                "FIX-21", "error", node.lineno,
-                f"deprecated decorator filter.{node.attr} (removed in v4.x)",
-                "Use @filter.event_message_type(...) + Python-side matching.",
+                "FIX-21",
+                "warning",
+                node.lineno,
+                f"unknown filter attribute `filter.{node.attr}` (never existed in AstrBot)",
+                "Use verified filter.* only (command, event_message_type, regex, …); "
+                "for keywords/match use event_message_type + Python matching.",
             )
         # StarTools.get_data_dir outside Star subclass
         if (
@@ -176,14 +190,18 @@ class _FileChecker(ast.NodeVisitor):
             and not (self.star_class_stack and self.star_class_stack[-1])
         ):
             self.out(
-                "FIX-27", "warning", node.lineno,
+                "FIX-27",
+                "warning",
+                node.lineno,
                 "StarTools.get_data_dir() called outside a Star subclass",
                 "Call it in the plugin's Star __init__ and pass data_dir to services.",
             )
         # register_llm_tool deprecated
         if node.attr == "register_llm_tool":
             self.out(
-                "FIX-13", "warning", node.lineno,
+                "FIX-13",
+                "warning",
+                node.lineno,
                 "register_llm_tool() is deprecated",
                 "Use the @filter.llm_tool decorator.",
             )
@@ -209,10 +227,13 @@ class _FileChecker(ast.NodeVisitor):
         if any(
             (isinstance(d, ast.Name) and d.id == "dataclass")
             or (isinstance(d, ast.Attribute) and d.attr == "dataclass")
-            or (isinstance(d, ast.Call) and (
-                (isinstance(d.func, ast.Name) and d.func.id == "dataclass")
-                or (isinstance(d.func, ast.Attribute) and d.func.attr == "dataclass")
-            ))
+            or (
+                isinstance(d, ast.Call)
+                and (
+                    (isinstance(d.func, ast.Name) and d.func.id == "dataclass")
+                    or (isinstance(d.func, ast.Attribute) and d.func.attr == "dataclass")
+                )
+            )
             for d in node.decorator_list
         ):
             for stmt in node.body:
@@ -220,7 +241,9 @@ class _FileChecker(ast.NodeVisitor):
                     stmt.value, (ast.Dict, ast.List, ast.Set)
                 ):
                     self.out(
-                        "FIX-20", "error", stmt.lineno,
+                        "FIX-20",
+                        "error",
+                        stmt.lineno,
                         "dataclass field with mutable literal default",
                         "Use field(default_factory=lambda: {...}) / field(default_factory=list).",
                     )
@@ -230,8 +253,11 @@ class _FileChecker(ast.NodeVisitor):
 
     def _check_star_init(self, node: ast.ClassDef) -> None:
         init = next(
-            (s for s in node.body
-             if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == "__init__"),
+            (
+                s
+                for s in node.body
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == "__init__"
+            ),
             None,
         )
         if init is None:
@@ -248,13 +274,17 @@ class _FileChecker(ast.NodeVisitor):
         )
         if not has_super:
             self.out(
-                "FIX-01", "error", init.lineno,
+                "FIX-01",
+                "error",
+                init.lineno,
                 "Star subclass __init__ missing super().__init__(context)",
                 "First line should be super().__init__(context).",
             )
         if "config" not in args:
             self.out(
-                "FIX-22", "info", init.lineno,
+                "FIX-22",
+                "info",
+                init.lineno,
                 "__init__ does not accept `config: AstrBotConfig`",
                 "Needed only if the plugin has _conf_schema.json; "
                 "then also set self.config = config.",
@@ -268,7 +298,7 @@ class _FileChecker(ast.NodeVisitor):
         self._check_handler(node)
         self.generic_visit(node)
 
-    def _handler_decorators(self, node) -> List[str]:
+    def _handler_decorators(self, node) -> list[str]:
         found = []
         for d in node.decorator_list:
             target = d.func if isinstance(d, ast.Call) else d
@@ -312,26 +342,80 @@ class _FileChecker(ast.NodeVisitor):
                         )
                         break
         if "command" in decs or "command_group" in decs:
-            if not (node.body and isinstance(node.body[0], ast.Expr)
-                    and isinstance(node.body[0].value, ast.Constant)
-                    and isinstance(node.body[0].value.value, str)):
+            if not (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
                 self.out(
-                    "FIX-17", "warning", node.lineno,
+                    "FIX-17",
+                    "warning",
+                    node.lineno,
                     f"@filter.command handler `{node.name}` missing docstring",
                     "Every @filter.command must have a docstring (shown in help).",
                 )
             args = [a.arg for a in node.args.args]
             extra = [a for a in args if a not in ("self", "event")]
             if "command" in decs and extra:
-                self.out(
-                    "FIX-02", "warning", node.lineno,
-                    f"command handler `{node.name}` has extra parameters {extra}",
-                    "Prefer parsing event.message_str; extra params can raise "
-                    "`got multiple values for argument`.",
-                )
+                # H1-B: official typed params are legal (4.27.4 smoke).
+                # Constrain codegen: annotate structured params; free-text via message_str remainder.
+                ann_map = {}
+                for a in node.args.args:
+                    if a.arg not in extra:
+                        continue
+                    ann = a.annotation
+                    if ann is None:
+                        ann_map[a.arg] = None
+                    elif isinstance(ann, ast.Name):
+                        ann_map[a.arg] = ann.id
+                    elif isinstance(ann, ast.Constant) and isinstance(ann.value, str):
+                        ann_map[a.arg] = ann.value
+                    else:
+                        ann_map[a.arg] = "other"
+                untyped = [p for p, t in ann_map.items() if t is None]
+                free_text = [p for p, t in ann_map.items() if t == "str"]
+                structured = [p for p, t in ann_map.items() if t in ("int", "float", "bool")]
+                if untyped:
+                    self.out(
+                        "FIX-02",
+                        "warning",
+                        node.lineno,
+                        f"command handler `{node.name}` has untyped extra parameters {untyped}",
+                        "H1-B: annotate structured params (int/float/bool) OR parse "
+                        "free-text from event.message_str after stripping the command "
+                        "prefix (message_str is full plaintext).",
+                    )
+                elif free_text and not structured:
+                    self.out(
+                        "FIX-02",
+                        "warning",
+                        node.lineno,
+                        f"command handler `{node.name}` free-text str params {free_text}",
+                        "H1-B: prefer event.message_str remainder (strip command token) "
+                        "for prose args; typed str is OK only for single-token semantics.",
+                    )
+                elif structured and not free_text and not untyped:
+                    self.out(
+                        "FIX-02",
+                        "info",
+                        node.lineno,
+                        f"command handler `{node.name}` uses typed structured params {structured}",
+                        "H1-B: official-style typed params — allowed (AstrBot 4.27.4 smoke).",
+                    )
+                else:
+                    self.out(
+                        "FIX-02",
+                        "warning",
+                        node.lineno,
+                        f"command handler `{node.name}` mixed extra parameters {extra}",
+                        "H1-B: do not mix styles; structured→typed, free-text→message_str remainder.",
+                    )
             if "command" in decs and not isinstance(node, ast.AsyncFunctionDef):
                 self.out(
-                    "FIX-29", "warning", node.lineno,
+                    "FIX-29",
+                    "warning",
+                    node.lineno,
                     f"command handler `{node.name}` is not async",
                     "Handlers should be `async def`.",
                 )
@@ -344,7 +428,9 @@ class _FileChecker(ast.NodeVisitor):
             for i, ln in enumerate(self.source.splitlines(), 1):
                 if "ToolExecResult" in ln and not ln.strip().startswith("#"):
                     self.out(
-                        "FIX-07", "warning", i,
+                        "FIX-07",
+                        "warning",
+                        i,
                         "ToolExecResult referenced",
                         "Tool.call() should return str on Python 3.12.",
                     )
@@ -357,12 +443,14 @@ class _FileChecker(ast.NodeVisitor):
                 continue
             if name not in self.used_names and f"{name}." not in self.source:
                 self.out(
-                    "FIX-23", "info", lineno,
+                    "FIX-23",
+                    "info",
+                    lineno,
                     f"unused import `{name}`",
                     "Remove unused imports before review.",
                 )
 
-    def run(self) -> "_FileChecker":
+    def run(self) -> _FileChecker:
         self.visit(self.tree)
         self.check_tool_exec_result()
         self.check_unused_imports()
@@ -374,9 +462,9 @@ class _FileChecker(ast.NodeVisitor):
 _META_REQUIRED = ("name", "desc", "version", "author")
 
 
-def check_metadata(meta_path: Path, report: ReviewReport) -> Dict[str, str]:
+def check_metadata(meta_path: Path, report: ReviewReport) -> dict[str, str]:
     rel = meta_path.name
-    fields: Dict[str, str] = {}
+    fields: dict[str, str] = {}
     if not meta_path.is_file():
         report.add(Finding("META-01", "error", rel, 0, "metadata.yaml missing"))
         return fields
@@ -387,38 +475,57 @@ def check_metadata(meta_path: Path, report: ReviewReport) -> Dict[str, str]:
             fields[key] = m.group(1).strip()
     for key in _META_REQUIRED:
         if not fields.get(key):
-            report.add(Finding(
-                "META-02", "error", rel, 0, f"metadata.yaml missing required field `{key}`",
-            ))
+            report.add(
+                Finding(
+                    "META-02",
+                    "error",
+                    rel,
+                    0,
+                    f"metadata.yaml missing required field `{key}`",
+                )
+            )
     name = fields.get("name", "")
     if name and not name.startswith("astrbot_plugin_"):
-        report.add(Finding(
-            "META-03", "warning", rel, 0,
-            f"plugin name `{name}` missing astrbot_plugin_ prefix",
-            "Naming rule: astrbot_plugin_*, lowercase, no spaces.",
-        ))
+        report.add(
+            Finding(
+                "META-03",
+                "warning",
+                rel,
+                0,
+                f"plugin name `{name}` missing astrbot_plugin_ prefix",
+                "Naming rule: astrbot_plugin_*, lowercase, no spaces.",
+            )
+        )
     if name and re.search(r"[A-Z\s]", name):
-        report.add(Finding(
-            "META-03", "warning", rel, 0,
-            f"plugin name `{name}` must be lowercase without spaces",
-        ))
+        report.add(
+            Finding(
+                "META-03",
+                "warning",
+                rel,
+                0,
+                f"plugin name `{name}` must be lowercase without spaces",
+            )
+        )
     av = fields.get("astrbot_version", "")
     # strip comparators to inspect the version literal itself (>=v4.16 → v4.16)
     av_literal = re.sub(r"^[<>=!~\s,]+", "", av)
     if av_literal.startswith("v"):
-        report.add(Finding(
-            "META-04", "warning", rel, 0,
-            f"astrbot_version `{av}` must be PEP 440 (no v prefix)",
-            'e.g. ">=4.16" not ">=v4.16".',
-        ))
+        report.add(
+            Finding(
+                "META-04",
+                "warning",
+                rel,
+                0,
+                f"astrbot_version `{av}` must be PEP 440 (no v prefix)",
+                'e.g. ">=4.16" not ">=v4.16".',
+            )
+        )
     return fields
 
 
-def check_requirements(
-    plugin_dir: Path, all_modules: Set[str], report: ReviewReport
-) -> None:
+def check_requirements(plugin_dir: Path, all_modules: set[str], report: ReviewReport) -> None:
     req = plugin_dir / "requirements.txt"
-    declared: Set[str] = set()
+    declared: set[str] = set()
     if req.is_file():
         for line in req.read_text(encoding="utf-8", errors="replace").splitlines():
             s = line.strip()
@@ -430,35 +537,46 @@ def check_requirements(
         p.name for p in plugin_dir.iterdir() if p.is_dir()
     }
     third_party = {
-        m for m in all_modules
-        if m and m not in _STDLIB_HINT
+        m
+        for m in all_modules
+        if m
+        and m not in _STDLIB_HINT
         and not m.startswith("astrbot")
         and m not in local_names
         and m.lower() not in _ASTRBOT_BUNDLED
     }
-    missing = sorted(
-        m for m in third_party if m.lower().replace("-", "_") not in declared
-    )
+    missing = sorted(m for m in third_party if m.lower().replace("-", "_") not in declared)
     for m in missing:
-        report.add(Finding(
-            "REQ-01", "warning", "requirements.txt", 0,
-            f"third-party module `{m}` imported but not declared",
-            "Add it to requirements.txt (AstrBot installs it on plugin install).",
-        ))
+        report.add(
+            Finding(
+                "REQ-01",
+                "warning",
+                "requirements.txt",
+                0,
+                f"third-party module `{m}` imported but not declared",
+                "Add it to requirements.txt (AstrBot installs it on plugin install).",
+            )
+        )
 
 
 def check_namespace(plugin_dir: Path, main_source: str, report: ReviewReport) -> None:
     generic = [
-        p.name for p in plugin_dir.iterdir()
+        p.name
+        for p in plugin_dir.iterdir()
         if p.is_dir() and p.name in GENERIC_PKG_NAMES and (p / "__init__.py").exists()
     ]
     if generic and "sys.path.insert" not in main_source:
-        report.add(Finding(
-            "FIX-26", "warning", "main.py", 1,
-            f"generic package dirs {generic} without sys.path.insert guard",
-            "Add sys.path.insert(0, os.path.dirname(__file__)) at top of main.py "
-            "to avoid cross-plugin namespace collisions.",
-        ))
+        report.add(
+            Finding(
+                "FIX-26",
+                "warning",
+                "main.py",
+                1,
+                f"generic package dirs {generic} without sys.path.insert guard",
+                "Add sys.path.insert(0, os.path.dirname(__file__)) at top of main.py "
+                "to avoid cross-plugin namespace collisions.",
+            )
+        )
 
 
 # ── entry point ────────────────────────────────────────────────
@@ -487,10 +605,11 @@ def review_plugin_directory(plugin_path: str | Path) -> ReviewReport:
 
     check_metadata(root / "metadata.yaml", report)
 
-    all_modules: Set[str] = set()
+    all_modules: set[str] = set()
     main_source = ""
     py_files = sorted(
-        p for p in root.rglob("*.py")
+        p
+        for p in root.rglob("*.py")
         if not any(part in ("__pycache__", ".venv", "venv", ".git") for part in p.parts)
     )
     for py in py_files:
@@ -501,11 +620,16 @@ def review_plugin_directory(plugin_path: str | Path) -> ReviewReport:
         try:
             tree = ast.parse(source)
         except SyntaxError as exc:
-            report.add(Finding(
-                "SYNTAX", "error", rel, exc.lineno or 0,
-                f"SyntaxError: {exc.msg}",
-                "Fix before anything else — plugin cannot load.",
-            ))
+            report.add(
+                Finding(
+                    "SYNTAX",
+                    "error",
+                    rel,
+                    exc.lineno or 0,
+                    f"SyntaxError: {exc.msg}",
+                    "Fix before anything else — plugin cannot load.",
+                )
+            )
             continue
         checker = _FileChecker(rel, tree, source).run()
         report.findings.extend(checker.findings)
@@ -527,11 +651,11 @@ class _AdapterFileChecker(ast.NodeVisitor):
         self.rel = rel_path
         self.tree = tree
         self.source = source
-        self.findings: List[Finding] = []
-        self.platform_classes: List[ast.ClassDef] = []
-        self.star_classes: List[ast.ClassDef] = []
+        self.findings: list[Finding] = []
+        self.platform_classes: list[ast.ClassDef] = []
+        self.star_classes: list[ast.ClassDef] = []
         self.has_register = "register_platform_adapter" in source
-        self.top_level_modules: Set[str] = set()
+        self.top_level_modules: set[str] = set()
         # adapter behavioral markers (aggregated across files)
         self.self_id_assigned = False
         self.builds_astrbot_message = False
@@ -598,9 +722,7 @@ class _AdapterFileChecker(ast.NodeVisitor):
         if self._is_platform_subclass(node):
             self.platform_classes.append(node)
             method_names = {
-                s.name
-                for s in node.body
-                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
+                s.name for s in node.body if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
             }
             for req in ADAPTER_REQUIRED_METHODS:
                 if req not in method_names:
@@ -616,9 +738,7 @@ class _AdapterFileChecker(ast.NodeVisitor):
             for s in node.body:
                 if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == "__init__":
                     for sub in ast.walk(s):
-                        if isinstance(sub, ast.Attribute) and isinstance(
-                            sub.value, ast.Name
-                        ):
+                        if isinstance(sub, ast.Attribute) and isinstance(sub.value, ast.Name):
                             if (
                                 sub.value.id == "self"
                                 and sub.attr in risky
@@ -646,8 +766,8 @@ class _AdapterFileChecker(ast.NodeVisitor):
             self._check_register_config_builtins(node)
         self.generic_visit(node)
 
-    def _dict_keys(self, node: ast.AST) -> List[str]:
-        keys: List[str] = []
+    def _dict_keys(self, node: ast.AST) -> list[str]:
+        keys: list[str] = []
         if not isinstance(node, ast.Dict):
             return keys
         for k in node.keys:
@@ -692,7 +812,7 @@ class _AdapterFileChecker(ast.NodeVisitor):
                     "config_metadata collision).",
                 )
 
-    def run(self) -> "_AdapterFileChecker":
+    def run(self) -> _AdapterFileChecker:
         self.visit(self.tree)
         # Per-file: Platform/register may live outside main.py (synochat pattern).
         self._scan_adapter_behavior()
@@ -770,7 +890,7 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
             )
         )
 
-    all_modules: Set[str] = set()
+    all_modules: set[str] = set()
     any_platform = False
     any_register = False
     any_star = False
@@ -781,9 +901,7 @@ def review_adapter_directory(plugin_path: str | Path) -> ReviewReport:
     py_files = sorted(
         p
         for p in root.rglob("*.py")
-        if not any(
-            part in ("__pycache__", ".venv", "venv", ".git") for part in p.parts
-        )
+        if not any(part in ("__pycache__", ".venv", "venv", ".git") for part in p.parts)
     )
     for py in py_files:
         rel = str(py.relative_to(root))

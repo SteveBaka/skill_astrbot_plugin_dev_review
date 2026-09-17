@@ -7,13 +7,15 @@ Goal: contents ≈ GitHub "Download ZIP" / marketplace package:
   - Top-level folder = plugin directory name (usually astrbot_plugin_*)
   - Exclude files matching .gitignore (plugin root, then walk up to git root)
   - Always exclude common junk even if not listed in .gitignore
-  - Official market (AstrBot Cloud / plugin-publish, ≥4.26.8): published ZIP
-    must be ≤ 16MB — hard excludes + gitignore help stay under the limit
+  - Official market (AstrBot Cloud / plugin-publish, >=4.26.8): published ZIP
+    must be <= 16MB — hard excludes + gitignore help stay under the limit
 
 Exclusion priority:
   1. Hard denylist (safety; matches typical release hygiene)
   2. Aggregated .gitignore rules (pathspec if available, else stdlib fallback)
   3. Never pack outside plugin_dir
+
+Shared filtering logic lives in runtime._filter_util.
 """
 
 from __future__ import annotations
@@ -22,50 +24,21 @@ import io
 import os
 import re
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
-# [RUNTIME] Always skip — even if .gitignore is missing/incomplete.
-# Aligns with clean market/GitHub source trees (no venv, no pyc, no IDE).
-HARD_EXCLUDE_DIR_NAMES = {
-    ".git",
-    ".svn",
-    ".hg",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "node_modules",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".tox",
-    ".idea",
-    ".vscode",
-    ".cursor",
-    ".kilo",
-    ".kilocode",
-    "dist",
-    "build",
-    ".eggs",
-    "*.egg-info",
-}
-
-HARD_EXCLUDE_FILE_NAMES = {
-    ".DS_Store",
-    "Thumbs.db",
-    ".coverage",
-    "coverage.xml",
-    ".error_kb.json",
-}
-
-HARD_EXCLUDE_SUFFIXES = (
-    ".pyc",
-    ".pyo",
-    ".pyd",
-    ".so",
-    ".dylib",
-    ".egg",
+from ._filter_util import (
+    _read_text,
+)
+from ._filter_util import (
+    build_pathspec as _build_pathspec,
+)
+from ._filter_util import (
+    collect_gitignore_paths as _collect_gitignore_paths,
+)
+from ._filter_util import (
+    hard_excluded as _hard_excluded,
 )
 
 
@@ -83,28 +56,21 @@ class PackResult:
     file_count: int = 0
     total_bytes_uncompressed: int = 0
     zip_bytes_size: int = 0
-    included_sample: List[str] = field(default_factory=list)
-    excluded_sample: List[str] = field(default_factory=list)
-    gitignore_files: List[str] = field(default_factory=list)
+    included_sample: list[str] = field(default_factory=list)
+    excluded_sample: list[str] = field(default_factory=list)
+    gitignore_files: list[str] = field(default_factory=list)
     pathspec_engine: str = "none"
-    error: Optional[str] = None
-    error_kind: Optional[str] = None
+    error: str | None = None
+    error_kind: str | None = None
 
 
-def _read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="utf-8", errors="replace")
-
-
-def _yaml_scalar_fields(text: str, keys: Sequence[str]) -> Dict[str, str]:
+def _yaml_scalar_fields(text: str, keys: Sequence[str]) -> dict[str, str]:
     """
     Best-effort metadata.yaml scalar parse (no full YAML required for name/version).
 
     Supports: name: foo / name: "foo" / name: 'foo'
     """
-    out: Dict[str, str] = {}
+    out: dict[str, str] = {}
     for key in keys:
         m = re.search(
             rf"(?m)^\s*{re.escape(key)}\s*:\s*[\"']?([^\s\"'#]+(?:[^\n\"'#]*?)?)[\"']?\s*(?:#.*)?$",
@@ -147,113 +113,6 @@ def zip_filename_from_metadata(
     if ver:
         return f"{name}-{ver}.zip"
     return f"{name}.zip"
-
-
-def _collect_gitignore_paths(plugin_dir: Path) -> List[Path]:
-    """
-    Collect .gitignore from plugin_dir upward until filesystem root or .git.
-
-    Later files in the list are closer to root; matching uses all patterns
-    (pathspec: concatenated; fallback: any match excludes).
-    """
-    found: List[Path] = []
-    cur = plugin_dir.resolve()
-    for _ in range(32):
-        gi = cur / ".gitignore"
-        if gi.is_file():
-            found.append(gi)
-        if (cur / ".git").exists():
-            break
-        parent = cur.parent
-        if parent == cur:
-            break
-        cur = parent
-    return found
-
-
-def _build_pathspec(gitignore_files: Sequence[Path]):
-    """
-    Prefer pathspec (gitignore semantics). Fallback: simple glob matcher.
-    Returns (matcher, engine_name) where matcher.match_file(rel_posix) -> ignored?
-    """
-    patterns: List[str] = []
-    for gi in gitignore_files:
-        text = _read_text(gi)
-        for line in text.splitlines():
-            s = line.strip()
-            if not s or s.startswith("#"):
-                continue
-            patterns.append(s)
-
-    try:
-        import pathspec  # type: ignore
-
-        if patterns:
-            # pathspec >=1.x prefers "gitignore"; older only has "gitwildmatch"
-            try:
-                spec = pathspec.PathSpec.from_lines("gitignore", patterns)
-            except KeyError:
-                spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns)
-        else:
-            spec = None
-
-        class _PS:
-            def match_file(self, rel: str) -> bool:
-                if not spec:
-                    return False
-                return bool(spec.match_file(rel))
-
-        return _PS(), "pathspec"
-    except Exception:
-        pass
-
-    # [RUNTIME] Minimal fallback — common gitignore patterns only
-    compiled: List[Tuple[re.Pattern[str], bool]] = []
-    for raw in patterns:
-        neg = raw.startswith("!")
-        body = raw[1:] if neg else raw
-        # directory-only trailing /
-        body = body.rstrip("/")
-        # rough: ** and * 
-        esc = re.escape(body).replace(r"\*\*", "<<<DD>>>").replace(r"\*", "[^/]*")
-        esc = esc.replace("<<<DD>>>", ".*")
-        if not body.startswith("/"):
-            # match anywhere
-            rx = re.compile(rf"(^|/)({esc})(/|$)")
-        else:
-            rx = re.compile(rf"^({esc.lstrip('/')})(/|$)")
-        compiled.append((rx, neg))
-
-    class _FB:
-        def match_file(self, rel: str) -> bool:
-            ignored = False
-            for rx, neg in compiled:
-                if rx.search(rel):
-                    ignored = not neg
-            return ignored
-
-    return _FB(), "fallback"
-
-
-def _hard_excluded(rel_parts: Sequence[str], name: str, is_dir: bool) -> bool:
-    for part in rel_parts:
-        if part in HARD_EXCLUDE_DIR_NAMES:
-            return True
-        if part.endswith(".egg-info"):
-            return True
-        # safety: literal shell-variable dirs (e.g. "$PWD") created by a literal
-        # env path (error_kb bug) must never be packaged
-        if part.startswith("$"):
-            return True
-    if name in HARD_EXCLUDE_FILE_NAMES:
-        return True
-    if name.startswith("$"):
-        return True
-    if not is_dir:
-        lower = name.lower()
-        if any(lower.endswith(suf) for suf in HARD_EXCLUDE_SUFFIXES):
-            return True
-    return False
 
 
 def pack_plugin_directory(plugin_path: str | Path) -> PackResult:
@@ -324,8 +183,8 @@ def pack_plugin_directory(plugin_path: str | Path) -> PackResult:
     gi_files = _collect_gitignore_paths(root)
     matcher, engine = _build_pathspec(gi_files)
 
-    included: List[Tuple[Path, str]] = []  # (abs, arcname)
-    excluded_sample: List[str] = []
+    included: list[tuple[Path, str]] = []  # (abs, arcname)
+    excluded_sample: list[str] = []
     unc_total = 0
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -333,7 +192,7 @@ def pack_plugin_directory(plugin_path: str | Path) -> PackResult:
         rel_dir = dpath.relative_to(root)
 
         # prune dirs in-place
-        keep_dirs: List[str] = []
+        keep_dirs: list[str] = []
         for dn in list(dirnames):
             sub_parts = (rel_dir.parts if str(rel_dir) != "." else ()) + (dn,)
             rel_sub = "/".join(sub_parts)

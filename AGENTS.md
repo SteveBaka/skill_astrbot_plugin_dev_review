@@ -70,7 +70,7 @@ tools `astrbot_logs_history` / `astrbot_logs_tail` / `astrbot_logs_search` are
 host and the plugin's `auth_token` (or AstrBot env `ASTRBOT_LOG_MCP_TOKEN`) to the SAME
 value for bidirectional `X-MCP-Token` auth. Full setup: `mcp/SETUP.md` § log bridge.
 
-**Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes); skill still documents ≥4.16 floor
+**Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes) — validated on **4.27.4**. **Skill-generated plugin `astrbot_version` default: `">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`) — metadata is a hard load gate matching skill contracts (H1-B, `astrbot.api.web`). Official **teaching** examples may still show `">=4.16,<5"` (ecosystem floor); do not copy that into skill scaffolds unless the plugin stays on the ancient surface only. Prefer **public API paths** (`astrbot.api.*`); official docs win on API semantics. After a **breaking** 4.28 adaptation that templates depend on, bump scaffold default to `">=4.28,<5"` and re-smoke.
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
 

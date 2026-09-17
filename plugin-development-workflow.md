@@ -37,11 +37,11 @@ display_name: Example               # Display name — match user's language (Ch
 desc: Short description.            # Short description — match user's language
 version: v1.0.0                     # Version
 author: YourName                    # Author name
-repo: ""                            # Leave empty on first generation; user fills after creating repo
-astrbot_version: ">=4.16,<5"        # AstrBot version range
+repo: ""                            # Local/first scaffold: leave empty. Marketplace publish: set GitHub repo URL
+astrbot_version: ">=4.27,<5"        # Skill scaffold default (contracts on 4.27+); official docs examples may show ">=4.16,<5"
 ```
 
-> **First-generation rules**: `display_name`, `desc`, `_conf_schema.json` descriptions/hints, and `README.md` should all use the same language as the user's input. `repo` should be left empty. `author` should use the user's name if provided.
+> **First-generation rules**: `display_name`, `desc`, `_conf_schema.json` descriptions/hints, and `README.md` should all use the same language as the user's input. `repo` may be left empty on local/first scaffold (AstrBot accepts it); set a valid GitHub URL before marketplace publish. `author` should use the user's name if provided. **`astrbot_version`**: skill default `">=4.27,<5"` — metadata is a hard load gate; do not claim 4.16 if the plugin uses skill 4.27+ contracts.
 
 ## 3. Implementing the Plugin Class
 
@@ -71,6 +71,7 @@ class ExamplePlugin(Star):
 - Handler methods must be on a `Star` subclass, with `self` + `event`
 - All handlers/hooks use `async def`
 - Handlers need brief docstrings (AstrBot displays them to users)
+- **Command args (H1-B)**: structured → annotated typed params; free-text → `event.message_str` remainder (strip command prefix); no untyped free-text extras
 - Clean up timers, connections, file handles in `terminate()`
 
 ## 4. Event Listening
@@ -89,7 +90,7 @@ Available filter decorators (v4.x):
 | `@filter.on_decorating_result()` | Result decorating hook |
 | `@filter.after_message_sent()` | After message sent hook |
 
-> ⚠️ `on_full_match`, `on_keyword`, `on_regex`, `on_prefix` are **REMOVED** in v4.x. Use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching instead.
+> ⚠️ `on_full_match`, `on_keyword`, `on_regex`, `on_prefix` **never existed** in AstrBot (hallucinated/foreign API names — not "removed in v4.x"). Use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching instead. The verified regex decorator is `@filter.regex`.
 
 Special hooks (`on_llm_request`, `on_llm_response`, `on_decorating_result`, `after_message_sent`):
 - Use `await event.send(...)` instead of `yield`
@@ -102,7 +103,7 @@ Special hooks (`on_llm_request`, `on_llm_response`, `on_decorating_result`, `aft
 text = event.message_str
 
 # Message chain
-from astrbot.api.message_components import Comp
+import astrbot.api.message_components as Comp
 chain = event.get_messages()
 
 # Build message chain

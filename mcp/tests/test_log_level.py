@@ -1,4 +1,5 @@
 """Unit tests for runtime.tools_manage log-level helpers."""
+
 from __future__ import annotations
 
 import json
@@ -33,17 +34,34 @@ class TestLogLevelGet:
         captured = {}
 
         def _res(**kw):
-            return type("R", (), {**kw, "to_dict": lambda self: {k: v for k, v in type(self).__dict__.items() if not callable(v) and not k.startswith("__")}})()
+            return type(
+                "R",
+                (),
+                {
+                    **kw,
+                    "to_dict": lambda self: {
+                        k: v
+                        for k, v in type(self).__dict__.items()
+                        if not callable(v) and not k.startswith("__")
+                    },
+                },
+            )()
+
         class FakeClient:
             def get(self, path, **kw):
                 captured["path"] = path
                 return _res(
-                    ok=True, error=None, error_kind=None,
-                    data={"status": "ok", "data": {
-                        "plugin_name": "astrbot_plugin_x",
-                        "log_level": "DEBUG",
-                        "config": {"token": "secret-value"},
-                    }},
+                    ok=True,
+                    error=None,
+                    error_kind=None,
+                    data={
+                        "status": "ok",
+                        "data": {
+                            "plugin_name": "astrbot_plugin_x",
+                            "log_level": "DEBUG",
+                            "config": {"token": "secret-value"},
+                        },
+                    },
                 )
 
         monkeypatch.setattr("runtime.tools_manage.AstrBotClient", lambda: FakeClient())
@@ -56,11 +74,25 @@ class TestLogLevelGet:
 
     def test_null_level_note(self, monkeypatch):
         def _res(**kw):
-            return type("R", (), {**kw, "to_dict": lambda self: {k: v for k, v in type(self).__dict__.items() if not callable(v) and not k.startswith("__")}})()
+            return type(
+                "R",
+                (),
+                {
+                    **kw,
+                    "to_dict": lambda self: {
+                        k: v
+                        for k, v in type(self).__dict__.items()
+                        if not callable(v) and not k.startswith("__")
+                    },
+                },
+            )()
+
         class FakeClient:
             def get(self, path, **kw):
                 return _res(
-                    ok=True, error=None, error_kind=None,
+                    ok=True,
+                    error=None,
+                    error_kind=None,
                     data={"status": "ok", "data": {"log_level": None}},
                 )
 
@@ -85,13 +117,28 @@ class TestLogLevelSet:
         captured = {}
 
         def _res(**kw):
-            return type("R", (), {**kw, "to_dict": lambda self: {k: v for k, v in type(self).__dict__.items() if not callable(v) and not k.startswith("__")}})()
+            return type(
+                "R",
+                (),
+                {
+                    **kw,
+                    "to_dict": lambda self: {
+                        k: v
+                        for k, v in type(self).__dict__.items()
+                        if not callable(v) and not k.startswith("__")
+                    },
+                },
+            )()
+
         class FakeClient:
             def put(self, path, json_body, **kw):
                 captured["path"] = path
                 captured["body"] = json_body
                 return _res(
-                    ok=True, status_code=200, error=None, error_kind=None,
+                    ok=True,
+                    status_code=200,
+                    error=None,
+                    error_kind=None,
                     data={"status": "ok", "message": "ok"},
                 )
 
@@ -106,12 +153,27 @@ class TestLogLevelSet:
         captured = {}
 
         def _res(**kw):
-            return type("R", (), {**kw, "to_dict": lambda self: {k: v for k, v in type(self).__dict__.items() if not callable(v) and not k.startswith("__")}})()
+            return type(
+                "R",
+                (),
+                {
+                    **kw,
+                    "to_dict": lambda self: {
+                        k: v
+                        for k, v in type(self).__dict__.items()
+                        if not callable(v) and not k.startswith("__")
+                    },
+                },
+            )()
+
         class FakeClient:
             def put(self, path, json_body, **kw):
                 captured["body"] = json_body
                 return _res(
-                    ok=True, status_code=200, error=None, error_kind=None,
+                    ok=True,
+                    status_code=200,
+                    error=None,
+                    error_kind=None,
                     data={"status": "ok", "message": "ok"},
                 )
 

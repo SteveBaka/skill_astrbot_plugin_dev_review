@@ -18,7 +18,7 @@ Every AstrBot import path must be **exact**. LLMs frequently hallucinate plausib
 | `AstrMessageEvent` | `from astrbot.api.event import AstrMessageEvent` | `from astrbot.api import AstrMessageEvent` |
 | `At` | `from astrbot.api.message_components import At` | — |
 | `BaseAgentRunHooks` | `from astrbot.core.agent.hooks import BaseAgentRunHooks` | — |
-| `Comp` | `from astrbot.api.message_components import Comp` | `from astrbot.api import Comp` |
+| `Comp` | `import astrbot.api.message_components as Comp` | `from astrbot.api.message_components import Comp` / `from astrbot.api import Comp` |
 | `Context` | `from astrbot.api.star import Context` | `from astrbot.api import Context` |
 | `ContextWrapper` | `from astrbot.core.agent.run_context import ContextWrapper` | — |
 | `filter` | `from astrbot.api.event import filter` | `from astrbot.api import filter` |
@@ -35,7 +35,15 @@ Every AstrBot import path must be **exact**. LLMs frequently hallucinate plausib
 | `PlatformMetadata` | `from astrbot.api.platform import PlatformMetadata` | — |
 | `ProviderRequest` | `from astrbot.api.provider import ProviderRequest` | `from astrbot.api import ProviderRequest` |
 | `Record` | `from astrbot.api.message_components import Record` | — |
-| `register_platform_adapter` | `from astrbot.core.platform.register import register_platform_adapter` | — |
+| `register_platform_adapter` | `from astrbot.api.platform import register_platform_adapter` | `from astrbot.api import register_platform_adapter` |
+| `MessageSession` | `from astrbot.core.platform.message_session import MessageSession` | — |
+| `MessageSesion` | `from astrbot.core.platform.message_session import MessageSesion` | `from astrbot.core.platform.astr_message_event import MessageSesion` (re-export, also valid) |
+| `request` | `from astrbot.api.web import request` | `from quart import request` (legacy) |
+| `json_response` | `from astrbot.api.web import json_response` | `from quart import jsonify` (legacy) |
+| `error_response` | `from astrbot.api.web import error_response` | — |
+| `file_response` | `from astrbot.api.web import file_response` | — |
+| `stream_response` | `from astrbot.api.web import stream_response` | — |
+| `PluginUploadFile` | `from astrbot.api.web import PluginUploadFile` | — |
 | `SessionController` | `from astrbot.core.utils.session_waiter import SessionController` | — |
 | `session_waiter` | `from astrbot.core.utils.session_waiter import session_waiter` | `from astrbot.api import session_waiter` |
 | `Star` | `from astrbot.api.star import Star` | `from astrbot.api import Star` |
@@ -46,7 +54,9 @@ Every AstrBot import path must be **exact**. LLMs frequently hallucinate plausib
 
 > **Deprecated — still known**: `register` (`from astrbot.api.star import register`) — use `metadata.yaml` instead.
 >
-> **Note**: AstrBot uses the typo `MessageSesion` (one 's') in its actual codebase. Use exactly that spelling: `from astrbot.core.platform.astr_message_event import MessageSesion`.
+> **Message session type**: official adapter docs import `MessageSesion` (historical typo) from `astrbot.core.platform.message_session`; canonical class is `MessageSession` in the same module. `astr_message_event` re-exports the alias — both import paths work; prefer `message_session` (official).
+>
+> **Platform adapter + Web APIs**: prefer **public** `astrbot.api.platform` / `astrbot.api.web` paths (official guides). Core paths (`astrbot.core.platform.register`, Quart) still load but are implementation/legacy — keep public for next-core compatibility.
 
 ### Alternative Import Style (Also Valid)
 
@@ -179,29 +189,40 @@ async def on_llm_req(self, event, req):
 - [ ] All `@filter`-decorated methods MUST include `event` parameter (except `on_astrbot_loaded`)
 - [ ] Handler methods MUST be `async def`
 - [ ] All `@filter.command` methods MUST have a docstring — AstrBot displays it in the WebUI as the command description
-- [ ] **Do NOT use function parameters for command user input** — AstrBot's parameter binding may cause `got multiple values for argument` errors. Use `event.message_str.strip()` instead.
+- [ ] **Command arg policy (H1-B)** — official typed params are valid (4.27.4 smoke). Models must pick ONE style:
+  - Structured numeric/flags → annotated typed params (`a: int, b: int`)
+  - Free-text remainder → no extra params; parse `event.message_str` **after stripping the command prefix** (message_str is full plaintext)
+  - Untyped extras / free-text `str` extras → 🟡 FIX-02 (annotate or switch to message_str remainder)
 
 ```python
-# ✅ CORRECT — use event.message_str for user input
+# ✅ CORRECT — free-text remainder (message_str includes command token)
 @filter.command("weather")
 async def weather(self, event: AstrMessageEvent):
     """Query weather for a city."""
-    city = event.message_str.strip()
+    raw = event.message_str.strip()
+    parts = raw.split(None, 1)
+    city = parts[1].strip() if len(parts) > 1 else ""
     if not city:
         yield event.plain_result("Usage: /weather <city>")
         return
     result = await fetch_weather(city)
     yield event.plain_result(result)
 
-# ❌ WRONG — function parameter causes "got multiple values" error
+# ✅ CORRECT — structured numeric (official; allowed on ≥4.27.4)
+@filter.command("add")
+async def add(self, event: AstrMessageEvent, a: int, b: int):
+    """Add two integers."""
+    yield event.plain_result(f"{a + b}")
+
+# ❌ WRONG (policy) — untyped free-text extra
 @filter.command("weather")
-async def weather(self, event: AstrMessageEvent, city: str = ""):
+async def weather(self, event: AstrMessageEvent, city):
     """Query weather for a city."""
     result = await fetch_weather(city)
     yield event.plain_result(result)
 ```
 
-> **Why**: AstrBot's `context_utils.py` parameter binding logic passes matched args through both positional and keyword arguments internally, causing `TypeError: got multiple values for argument 'city'` when the handler has a parameter with the same name. Always use `event.message_str` to get user input.
+> **Why (runtime)**: On AstrBot **4.27.4**, annotated typed command params bind correctly; framework returns friendly errors for missing/type mismatches. Historical `got multiple values` is **not** reproduced for normal typed commands. `event.message_str` remains the **full message text** (including the command name) — free-text handlers must strip the command prefix before treating the remainder as user input. Policy detail: FIX-02 / SKILL Mandatory Command argument policy.
 
 ```python
 # ✅ CORRECT
@@ -273,7 +294,7 @@ async def terminate(self):
 <!-- Source: https://github.com/AstrBotDevs/AstrBot/blob/master/docs/en/dev/star/guides/plugin-pages.md -->
 
 - [ ] `@filter.command_group` MUST use function pattern (`def math(): pass`), NOT a class
-- [ ] `@filter.on_keyword`, `@filter.on_full_match`, `@filter.on_regex` are **REMOVED** in v4.x — use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching
+- [ ] `@filter.on_keyword`, `@filter.on_full_match`, `@filter.on_regex`, `@filter.on_prefix` **never existed** (not removed APIs) — use `@filter.event_message_type(filter.EventMessageType.ALL)` + Python string matching; regex matching via `@filter.regex` or Python `re`
 - [ ] In `@dataclass` classes, dict/list fields MUST use `field(default_factory=lambda: {...})`, not direct dict/list literals
 - [ ] `context.register_llm_tool()` is **DEPRECATED** — must use `context.add_llm_tools()`
 - [ ] `@filter.llm_tool` decorator: `Args:` section in docstring MUST follow `param_name(type): description` format

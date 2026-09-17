@@ -26,7 +26,8 @@ import json
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 from .client import AstrBotClient, encode_plugin_id
 from .failure_analysis import analyze_failed_payload
@@ -37,11 +38,15 @@ HOOK_PROBE_MESSAGE = "请用一句话回复：现在是插件冒烟测试"
 
 # Curated extras for skill example plugins (message, optional markers for match).
 # Markers empty → only platform/handler checks apply for that message.
-_EXAMPLE_CASES: Dict[str, List[Tuple[str, str, Sequence[str]]]] = {
+_EXAMPLE_CASES: dict[str, list[tuple[str, str, Sequence[str]]]] = {
     # (case_name, message, success_markers)
     "astrbot_plugin_weather_tool": [
         ("weather_usage", "/weather", ("usage", "city", "error:", "weather")),
-        ("weather_beijing", "/weather Beijing", ("error:", "beijing", "weather", "°", "wttr", "network")),
+        (
+            "weather_beijing",
+            "/weather Beijing",
+            ("error:", "beijing", "weather", "°", "wttr", "network"),
+        ),
     ],
     "astrbot_plugin_quiz": [
         ("quiz_start", "/quiz", ("welcome", "question", "quiz")),
@@ -84,12 +89,12 @@ def _env_bool(name: str) -> bool:
 
 
 def build_smoke_cases(
-    components: List[Dict[str, Any]],
+    components: list[dict[str, Any]],
     *,
     include_admin: bool = False,
     max_cases: int = DEFAULT_MAX_CASES,
     plugin_id: str = "",
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Derive smoke cases from plugin component metadata + optional curated extras.
 
@@ -97,10 +102,10 @@ def build_smoke_cases(
     (help/info-like first) → command_groups → one hook probe → one llm_tool.
     Deduped by message, capped at max_cases.
     """
-    cases: List[Dict[str, Any]] = []
+    cases: list[dict[str, Any]] = []
     seen_msg: set = set()
 
-    def _add(case: Dict[str, Any]) -> None:
+    def _add(case: dict[str, Any]) -> None:
         msg = str(case.get("message") or "").strip()
         if not msg or msg in seen_msg:
             return
@@ -110,18 +115,20 @@ def build_smoke_cases(
     pid = (plugin_id or "").strip()
     for name, message, markers in _EXAMPLE_CASES.get(pid, []):
         soft = name.startswith("quiz_answer")  # multi-turn optional under MCP probe
-        _add({
-            "kind": "example",
-            "name": name,
-            "message": message,
-            "expect": "plugin-owned reply matching curated markers",
-            "markers": list(markers),
-            "require_markers": bool(markers) and not soft,
-            "soft": soft,
-        })
+        _add(
+            {
+                "kind": "example",
+                "name": name,
+                "message": message,
+                "expect": "plugin-owned reply matching curated markers",
+                "markers": list(markers),
+                "require_markers": bool(markers) and not soft,
+                "soft": soft,
+            }
+        )
 
-    commands: List[Dict[str, Any]] = []
-    groups: List[Dict[str, Any]] = []
+    commands: list[dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
     has_hook = False
     has_llm_tool = False
 
@@ -140,7 +147,7 @@ def build_smoke_cases(
         elif ctype in ("llm_tool", "tool"):
             has_llm_tool = True
 
-    def _info_like(c: Dict[str, Any]) -> int:
+    def _info_like(c: dict[str, Any]) -> int:
         name = str(c.get("command") or c.get("name") or "").lower()
         return 0 if any(k in name for k in ("info", "help", "version", "status", "list")) else 1
 
@@ -150,44 +157,52 @@ def build_smoke_cases(
         cmd = str(c.get("command") or c.get("name") or "").strip()
         if not cmd:
             continue
-        _add({
-            "kind": "command",
-            "name": cmd,
-            "message": f"/{cmd}",
-            "expect": "plugin command reply (not LLM chit-chat)",
-            "markers": [],
-            "require_markers": False,
-        })
+        _add(
+            {
+                "kind": "command",
+                "name": cmd,
+                "message": f"/{cmd}",
+                "expect": "plugin command reply (not LLM chit-chat)",
+                "markers": [],
+                "require_markers": False,
+            }
+        )
     for g in groups:
         name = str(g.get("command") or g.get("name") or "").strip()
         if not name:
             continue
-        _add({
-            "kind": "command_group",
-            "name": name,
-            "message": f"/{name}",
-            "expect": "group help or subcommand list",
-            "markers": [],
-            "require_markers": False,
-        })
+        _add(
+            {
+                "kind": "command_group",
+                "name": name,
+                "message": f"/{name}",
+                "expect": "group help or subcommand list",
+                "markers": [],
+                "require_markers": False,
+            }
+        )
     if has_hook:
-        _add({
-            "kind": "hook",
-            "name": "llm_hook",
-            "message": HOOK_PROBE_MESSAGE,
-            "expect": "LLM reply passes through plugin hook without SSE/platform error",
-            "markers": [],
-            "require_markers": False,
-        })
+        _add(
+            {
+                "kind": "hook",
+                "name": "llm_hook",
+                "message": HOOK_PROBE_MESSAGE,
+                "expect": "LLM reply passes through plugin hook without SSE/platform error",
+                "markers": [],
+                "require_markers": False,
+            }
+        )
     if has_llm_tool:
-        _add({
-            "kind": "llm_tool",
-            "name": "llm_tool",
-            "message": "如果有可用的插件工具，请调用它并说明结果",
-            "expect": "tool call attempted (LLM may decline — soft signal)",
-            "markers": [],
-            "require_markers": False,
-        })
+        _add(
+            {
+                "kind": "llm_tool",
+                "name": "llm_tool",
+                "message": "如果有可用的插件工具，请调用它并说明结果",
+                "expect": "tool call attempted (LLM may decline — soft signal)",
+                "markers": [],
+                "require_markers": False,
+            }
+        )
     return cases[:max_cases]
 
 
@@ -230,22 +245,22 @@ _CHITCHAT_MARKERS = (
 )
 
 
-def _looks_like_platform_failure(plains: List[str]) -> bool:
+def _looks_like_platform_failure(plains: list[str]) -> bool:
     blob = "\n".join(plains or "").lower()
     return any(m.lower() in blob for m in _PLATFORM_FAIL_MARKERS)
 
 
-def _looks_like_handler_failure(plains: List[str]) -> bool:
+def _looks_like_handler_failure(plains: list[str]) -> bool:
     blob = "\n".join(plains or "")
     return bool(_HANDLER_FAIL_RE.search(blob))
 
 
-def _looks_like_chitchat(plains: List[str]) -> bool:
+def _looks_like_chitchat(plains: list[str]) -> bool:
     blob = "\n".join(plains or "").lower()
     return any(m.lower() in blob for m in _CHITCHAT_MARKERS)
 
 
-def _markers_hit(plains: List[str], markers: Sequence[str]) -> bool:
+def _markers_hit(plains: list[str], markers: Sequence[str]) -> bool:
     if not markers:
         return True
     blob = "\n".join(plains or "").lower()
@@ -253,12 +268,12 @@ def _markers_hit(plains: List[str], markers: Sequence[str]) -> bool:
 
 
 def judge_case(
-    probe_result: Dict[str, Any],
+    probe_result: dict[str, Any],
     kind: str,
     *,
     markers: Sequence[str] = (),
     require_markers: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Map one chat_probe JSON result to a pass/fail verdict (stricter than chat_probe.ok)."""
     summary = probe_result.get("summary") or {}
     errors = list(summary.get("errors") or [])
@@ -344,21 +359,23 @@ def astrbot_smoke_suite(
     if not pid:
         return _dumps({"ok": False, "error_kind": "bad_request", "error": "plugin_id required"})
     if not confirm and not _env_bool("ASTRBOT_ALLOW_CHAT_PROBE"):
-        return _dumps({
-            "ok": False,
-            "error_kind": "confirm_required",
-            "error": (
-                "smoke_suite sends WebChat messages — needs confirm=true after "
-                "user explicitly allows (or ASTRBOT_ALLOW_CHAT_PROBE env)."
-            ),
-        })
+        return _dumps(
+            {
+                "ok": False,
+                "error_kind": "confirm_required",
+                "error": (
+                    "smoke_suite sends WebChat messages — needs confirm=true after "
+                    "user explicitly allows (or ASTRBOT_ALLOW_CHAT_PROBE env)."
+                ),
+            }
+        )
 
     client = AstrBotClient()
-    out: Dict[str, Any] = {"ok": False, "plugin_id": pid, "pipeline": {}}
+    out: dict[str, Any] = {"ok": False, "plugin_id": pid, "pipeline": {}}
 
     # ── step 1: plugin exists / activated ──────────────────────
     got = client.get(f"/api/v1/plugins/{encode_plugin_id(pid)}")
-    info: Optional[Dict[str, Any]] = None
+    info: dict[str, Any] | None = None
     if got.ok and isinstance(got.data, dict):
         d = got.data.get("data")
         if isinstance(d, dict) and d:
@@ -367,7 +384,8 @@ def astrbot_smoke_suite(
         failed = client.get("/api/v1/plugins/failed")
         analysis = analyze_failed_payload(failed.data) if failed.ok else None
         mine = [
-            x for x in (analysis or {}).get("diagnoses", [])
+            x
+            for x in (analysis or {}).get("diagnoses", [])
             if pid in (x.get("dir_name", ""), x.get("plugin_name", ""))
         ]
         out["error_kind"] = "plugin_not_loaded"
@@ -376,8 +394,8 @@ def astrbot_smoke_suite(
         out["next_step"] = (
             "Fix load error per failed_diagnosis (fix_rule links auto-fix-guide), "
             "then astrbot_plugin_reload(failed=true) and rerun smoke_suite."
-            if mine else
-            "Install it first: astrbot_plugin_install_path(path)."
+            if mine
+            else "Install it first: astrbot_plugin_install_path(path)."
         )
         return _dumps(out)
 
@@ -400,17 +418,17 @@ def astrbot_smoke_suite(
         max_cases=max_cases,
         plugin_id=pid,
     )
-    for i, msg in enumerate(
-        m.strip() for m in (extra_messages or "").split("||") if m.strip()
-    ):
-        cases.append({
-            "kind": "custom",
-            "name": f"custom_{i + 1}",
-            "message": msg,
-            "expect": "user-defined",
-            "markers": [],
-            "require_markers": False,
-        })
+    for i, msg in enumerate(m.strip() for m in (extra_messages or "").split("||") if m.strip()):
+        cases.append(
+            {
+                "kind": "custom",
+                "name": f"custom_{i + 1}",
+                "message": msg,
+                "expect": "user-defined",
+                "markers": [],
+                "require_markers": False,
+            }
+        )
     cases = cases[: max(max_cases, 1)]
     if not cases:
         out["error_kind"] = "no_cases"
@@ -432,7 +450,7 @@ def astrbot_smoke_suite(
         out["pipeline"]["curated_example"] = True
 
     # ── step 3: run probes (fixed smoke session; sequential) ───
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     t0 = time.time()
     for case in cases:
         raw = astrbot_chat_probe(
@@ -449,7 +467,7 @@ def astrbot_smoke_suite(
             out["aborted_at_case"] = case["name"]
             out["results"] = results
             return _dumps(out)
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "case": case["name"],
             "kind": case["kind"],
             "message": case["message"],
@@ -465,10 +483,9 @@ def astrbot_smoke_suite(
         if case.get("soft"):
             markers = case.get("markers") or []
             mark_hit = judged.get("markers_hit")
-            not_confirmed = (
-                (markers and mark_hit is False)
-                or judged["verdict"] == "content_mismatch"
-            )
+            not_confirmed = (markers and mark_hit is False) or judged[
+                "verdict"
+            ] == "content_mismatch"
             if not_confirmed and judged["verdict"] in ("pass", "content_mismatch"):
                 judged["verdict"] = "soft_pass"
                 judged["sse_errors"] = list(judged.get("sse_errors") or []) + [
@@ -485,7 +502,8 @@ def astrbot_smoke_suite(
     if failed_after.ok:
         analysis = analyze_failed_payload(failed_after.data)
         mine = [
-            x for x in analysis.get("diagnoses", [])
+            x
+            for x in analysis.get("diagnoses", [])
             if pid in (x.get("dir_name", ""), x.get("plugin_name", ""))
         ]
         if mine:
@@ -561,7 +579,6 @@ def astrbot_smoke_suite(
             )
         else:
             out["next_step"] = (
-                f"Investigate failing cases {fails}; "
-                "for load crashes see pipeline.post_run_failed."
+                f"Investigate failing cases {fails}; for load crashes see pipeline.post_run_failed."
             )
     return _dumps(out)

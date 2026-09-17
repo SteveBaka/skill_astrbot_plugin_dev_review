@@ -3,6 +3,7 @@
 Signatures are exercised with realistic tracebacks matching what
 star_manager._build_failed_plugin_record stores (source-verified shape).
 """
+
 from __future__ import annotations
 
 from runtime.failure_analysis import (
@@ -15,26 +16,26 @@ from runtime.failure_analysis import (
 
 PLUGIN_DIR = "astrbot_plugin_quiz"
 
-TB_IMPORT = f'''Traceback (most recent call last):
+TB_IMPORT = f"""Traceback (most recent call last):
   File "/AstrBot/astrbot/core/star/star_manager.py", line 1130, in load
     module = importlib.import_module(module_path)
   File "/AstrBot/data/plugins/{PLUGIN_DIR}/main.py", line 3, in <module>
     from astrbot.api.logger import logger
 ModuleNotFoundError: No module named 'astrbot.api.logger'
-'''
+"""
 
-TB_DEP = f'''Traceback (most recent call last):
+TB_DEP = f"""Traceback (most recent call last):
   File "/AstrBot/data/plugins/{PLUGIN_DIR}/main.py", line 5, in <module>
     import aiofiles
 ModuleNotFoundError: No module named 'aiofiles'
-'''
+"""
 
-TB_SYNTAX = f'''Traceback (most recent call last):
+TB_SYNTAX = f"""Traceback (most recent call last):
   File "/AstrBot/data/plugins/{PLUGIN_DIR}/main.py", line 42
     def broken(
               ^
 SyntaxError: '(' was never closed
-'''
+"""
 
 
 class TestClassify:
@@ -51,9 +52,7 @@ class TestClassify:
     def test_astrbot_import_beats_generic_dep(self):
         # ordering: astrbot-path import errors must NOT be classified as
         # missing third-party dependency
-        c = classify_error(
-            "ModuleNotFoundError: No module named 'astrbot.core.nothing'"
-        )
+        c = classify_error("ModuleNotFoundError: No module named 'astrbot.core.nothing'")
         assert c["error_class"] == "wrong_import_path"
 
     def test_syntax_error(self):

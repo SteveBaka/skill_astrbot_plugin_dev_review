@@ -28,7 +28,7 @@ uninstall production plugins.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import AstrBotClient, encode_plugin_id
 from .config import load_config, mutation_denied_payload
@@ -38,12 +38,12 @@ def _dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2, default=str)
 
 
-def _require_plugin_id(plugin_id: str) -> Optional[str]:
+def _require_plugin_id(plugin_id: str) -> str | None:
     pid = (plugin_id or "").strip()
     return pid or None
 
 
-def uninstall_policy_help() -> Dict[str, Any]:
+def uninstall_policy_help() -> dict[str, Any]:
     """Static policy text for agents (also returned on soft refusals)."""
     return {
         "policy": "keep_config_and_data_by_default",

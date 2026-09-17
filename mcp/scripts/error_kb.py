@@ -21,6 +21,7 @@ Usage (from mcp/):
 
 Default store: mcp/.error_kb.json (gitignored). All samples are desensitized.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,18 +54,20 @@ def cmd_record(args) -> int:
         source=args.source or "",
     )
     rec = store.records[key]
-    print(json.dumps(
-        {
-            "ok": True,
-            "key": key,
-            "sample": rec["sample"],
-            "count": rec["count"],
-            "fix_rule": rec.get("fix_rule"),
-            "error_class": rec.get("error_class"),
-        },
-        ensure_ascii=False,
-        indent=2,
-    ))
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "key": key,
+                "sample": rec["sample"],
+                "count": rec["count"],
+                "fix_rule": rec.get("fix_rule"),
+                "error_class": rec.get("error_class"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -87,9 +90,7 @@ def cmd_report(args) -> int:
 def cmd_propose(args) -> int:
     store = _store(args)
     guide = Path(args.guide)
-    entries = propose_fix_entries(
-        store, guide, min_occurrences=args.min, max_entries=args.max
-    )
+    entries = propose_fix_entries(store, guide, min_occurrences=args.min, max_entries=args.max)
     if not entries:
         print("No recurring unclassified fingerprints to propose.")
         return 0
@@ -133,7 +134,10 @@ def main() -> int:
     rep.set_defaults(func=cmd_report)
 
     pr = sub.add_parser("propose", help="propose auto-fix-guide entries")
-    pr.add_argument("--guide", default=str(Path(__file__).resolve().parent.parent.parent / "review" / "auto-fix-guide.md"))
+    pr.add_argument(
+        "--guide",
+        default=str(Path(__file__).resolve().parent.parent.parent / "review" / "auto-fix-guide.md"),
+    )
     pr.add_argument("--min", type=int, default=2)
     pr.add_argument("--max", type=int, default=5)
     pr.set_defaults(func=cmd_propose)

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .client import AstrBotClient, encode_plugin_id
 from .config import load_config, mutation_denied_payload
@@ -49,7 +49,7 @@ def _redact_secrets(obj: Any, *, depth: int = 0) -> Any:
     if depth > 12:
         return obj
     if isinstance(obj, dict):
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for k, v in obj.items():
             if isinstance(k, str) and _SECRET_KEY_RE.search(k) and not isinstance(v, (dict, list)):
                 out[k] = "***REDACTED***" if v not in (None, "", []) else v
@@ -61,12 +61,12 @@ def _redact_secrets(obj: Any, *, depth: int = 0) -> Any:
     return obj
 
 
-def _require_plugin_id(plugin_id: str) -> Optional[str]:
+def _require_plugin_id(plugin_id: str) -> str | None:
     pid = (plugin_id or "").strip()
     return pid or None
 
 
-def _mutation_or_none(action: str) -> Optional[str]:
+def _mutation_or_none(action: str) -> str | None:
     """Return JSON refusal string if mutations disabled; else None."""
     cfg = load_config()
     if not cfg.allow_mutations:
@@ -283,7 +283,7 @@ def astrbot_plugin_log_level_get(plugin_id: str) -> str:
         return _dumps({"ok": False, "error": "plugin_id is required", "error_kind": "bad_request"})
     client = AstrBotClient()
     result = client.get(f"/api/v1/plugins/{encode_plugin_id(pid)}/config")
-    payload: Dict[str, Any] = {"ok": result.ok, "plugin_id": pid, "error": result.error}
+    payload: dict[str, Any] = {"ok": result.ok, "plugin_id": pid, "error": result.error}
     if result.ok and isinstance(result.data, dict):
         d = result.data.get("data") or result.data
         if isinstance(d, dict):
@@ -295,9 +295,7 @@ def astrbot_plugin_log_level_get(plugin_id: str) -> str:
     return _dumps(payload)
 
 
-def astrbot_plugin_log_level_set(
-    plugin_id: str, level: str, *, confirm: bool = False
-) -> str:
+def astrbot_plugin_log_level_set(plugin_id: str, level: str, *, confirm: bool = False) -> str:
     """
     PUT /api/v1/plugins/{plugin_id}/log-level — set per-plugin log level.
 

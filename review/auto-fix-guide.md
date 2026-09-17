@@ -64,9 +64,26 @@ class MyPlugin(Star):
         super().__init__(context)
 ```
 
-### FIX-02: Handler Signature Errors
+### FIX-02: Handler Signature Errors (incl. Command Arg Policy)
 
-**Problem**: Handler missing `async`, missing `event` parameter, or using function parameters for user input.
+**Problem**: Handler missing `async`, missing `event`, **or** command arguments use a style that violates the **H1-B command arg policy** (official typed params are legal; models must not invent mixed/untyped free-text bindings).
+
+**Runtime evidence (AstrBot 4.27.4, probe `astrbot_plugin_skill_probe` v0.2.0)**:
+- `@filter.command` + `a: int, b: int` → works (`add=3`)
+- `city: str = ""` → works when user supplies a token (`weather_city='Taipei'`); default applies when omitted
+- `command_group` + typed ints → works
+- Missing/wrong-type args → framework messages (`必要参数缺失` / `参数 a 类型错误`), **not** a crash
+- `event.message_str` is the **full plaintext** (`skillprobe hello`), not args-only
+
+**Policy (codegen models MUST follow — pick ONE style per command)**:
+
+| Case | Required style | Review |
+|------|----------------|--------|
+| Numbers / flags / fixed schema | Annotated typed params: `a: int, b: int`, `flag: bool = False` | 🔵 info (allowed) |
+| Free-text remainder (spaces, URLs) | **No extra params**; parse `event.message_str` after stripping command prefix | ✅ recommended |
+| Untyped extras (`text`, `city`) | ❌ Annotate or use message_str remainder | 🟡 FIX-02 warning |
+| Free-text `str` extras | Prefer message_str remainder; if typed, keep single-token semantics | 🟡 FIX-02 warning |
+| Invented filters (`on_keyword`…) | Never — see FIX-21 | 🟡 / ❌ |
 
 ```python
 # ❌ WRONG — missing async
@@ -79,16 +96,26 @@ def hello(self, event: AstrMessageEvent):
 async def hello(self):
     yield event.plain_result("Hello")
 
-# ❌ WRONG — function parameter causes "got multiple values" error
+# ❌ WRONG (policy) — untyped free-text extra; message_str is full plaintext
 @filter.command("weather")
-async def weather(self, event: AstrMessageEvent, city: str = ""):
+async def weather(self, event: AstrMessageEvent, city):
     result = await fetch_weather(city)
     yield event.plain_result(result)
 
-# ✅ FIX — async + event + event.message_str
+# ✅ FIX A — structured numeric: official typed params (allowed ≥4.27.4)
+@filter.command("add")
+async def add(self, event: AstrMessageEvent, a: int, b: int):
+    """Add two integers."""
+    yield event.plain_result(f"{a + b}")
+
+# ✅ FIX B — free-text remainder: strip command prefix from full message_str
 @filter.command("weather")
 async def weather(self, event: AstrMessageEvent):
-    city = event.message_str.strip()
+    """Query weather for a city."""
+    # message_str includes the command token, e.g. "weather Taipei"
+    raw = event.message_str.strip()
+    parts = raw.split(None, 1)
+    city = parts[1].strip() if len(parts) > 1 else ""
     if not city:
         yield event.plain_result("Usage: /weather <city>")
         return
@@ -405,12 +432,16 @@ class MyTool(FunctionTool[AstrAgentContext]):
 
 **Rule**: In `@dataclass` classes, dict/list fields MUST use `field(default_factory=lambda: {...})`, not direct dict/list literals.
 
-### FIX-21: Deprecated filter Decorators (on_keyword, on_full_match, on_regex)
+### FIX-21: Unknown filter Attribute (Typo / Non-existent API)
 
-**Problem**: `AttributeError: module 'astrbot.api.event.filter' has no attribute 'on_keyword'`. These decorators were removed in AstrBot v4.x. The current filter module only provides: `command`, `command_group`, `event_message_type`, `platform_adapter_type`, `permission_type`, `on_llm_request`, `on_llm_response`, `on_decorating_result`, `after_message_sent`, `on_waiting_llm_request`, `on_agent_begin`, `on_agent_done`, `on_using_llm_tool`, `on_llm_tool_respond`.
+**Problem**: `AttributeError: module 'astrbot.api.event.filter' has no attribute 'on_keyword'`.
+
+**Provenance (repo-verified)**: `on_keyword` / `on_full_match` / `on_prefix` / `on_regex` **never existed** in AstrBot — absent from tag sources (v3.4.0 / v4.0.0 / v4.10.0 / master `astrbot/api/event/filter/__init__.py`), all 200+ changelogs, and PR history. Do not describe them as "removed in v4.x"; they are hallucinated/foreign API names. The reviewer flags ANY `filter.<attr>` not in the verified export surface (`contracts.FILTER_ATTR_KNOWN`), as a warning (AttributeError risk), not an error.
+
+**Verified export surface** (v3.4.0 → master): `command`, `command_group`, `event_message_type`, `regex`, `platform_adapter_type`, `permission_type`, `custom_filter`, `llm_tool`, `after_message_sent`, `on_astrbot_loaded`, `on_llm_request`, `on_llm_response`, `on_decorating_result`, `on_waiting_llm_request`, `on_agent_begin`, `on_agent_done`, `on_using_llm_tool`, `on_llm_tool_respond`, `on_plugin_loaded`, `on_plugin_unloaded`, `on_plugin_error`, `on_platform_loaded` + classes `EventMessageType(-Filter)`, `PermissionType(-Filter)`, `PlatformAdapterType(-Filter)`, `CustomFilter`.
 
 ```python
-# ❌ WRONG — removed in v4.x
+# ❌ WRONG — this API never existed in AstrBot
 @filter.on_keyword("你好")
 async def on_hello(self, event):
     yield event.plain_result("你好！")
@@ -479,6 +510,14 @@ from astrbot.api import logger
 
 **Rule**: Every `import X` / `from X import Y` must be referenced at least once in the file. Remove all unused imports before review.
 
+**Exemptions (language/typing standards, not style)**: the checker never flags
+
+- `from __future__ import ...` — language feature imports (PEP 563) bind no name and are never a runtime dependency;
+- imports inside `if TYPE_CHECKING:` — type-checker-only imports (PEP 484) never execute at runtime and are intentional;
+- names used only in string annotations (`x: "Foo"`, `Optional["Foo"]`) — PEP 484/563 forward references are real uses even though `"Foo"` is an `ast.Constant`, not a name load.
+
+These mirror pyflakes/ruff F401 behavior and hold regardless of Python version or AstrBot release. A plain `if False:` guard is **not** exempt — only the canonical `if TYPE_CHECKING:` form.
+
 ### FIX-24: Duplicate Code
 
 **Problem**: LLMs may define the same data (e.g., joke list, API URLs) in multiple places instead of extracting to a shared constant.
@@ -526,19 +565,31 @@ resp = await fetch(api_url)
 
 ### FIX-26: Namespace Collision (Generic Package Names)
 
-**Problem**: `ImportError: attempted relative import beyond top-level package`. AstrBot adds all plugin dirs to `sys.path`. Using generic names like `services`, `models`, `utils` causes Python to find another plugin's package with the same name.
+**Problem**: plugins that split into sub-packages with generic names (`services`, `handlers`, `utils`, `models`, `core`, `api`, `common`) can collide with another plugin's same-named package.
+
+**How AstrBot loads plugins** (`astrbot/core/star/star_manager.py`): each plugin is imported as a sub-package of the `data.plugins` namespace — `__import__("data.plugins.<plugin_dir>.<module>")`. So:
+
+- **RELATIVE imports are safe by construction.** `from .core import x` resolves to `data.plugins.my_plugin.core`, isolated from every other plugin. This is the recommended style.
+- **ABSOLUTE imports are the actual risk.** `from core import x` resolves against top-level `sys.path`; Python picks the first `core` it finds (another plugin's, or none → `ImportError`).
 
 ```python
-# ❌ WRONG — another plugin also has services/ directory
-from services.persona_manager import PersonaManager  # Finds wrong services/!
+# ❌ WRONG — absolute import resolves against top-level sys.path,
+#   can hit another plugin's core/ (or fail with ImportError)
+from core.persona_manager import PersonaManager
 
-# ✅ FIX — add plugin dir to sys.path at top of main.py
+# ✅ FIX — use relative import; plugin lives under data.plugins.<name>
+from .core.persona_manager import PersonaManager
+
+# ⚠️ WORKAROUND (if absolute imports must stay, e.g. legacy code):
+#   push your own plugin dir to the front so `from core ...` hits YOUR core
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from services.persona_manager import PersonaManager  # Now finds YOUR services/
 ```
 
-**Rule**: If your plugin uses sub-packages (handlers/, services/, etc.), add `sys.path.insert(0, os.path.dirname(__file__))` at the top of `main.py` before any sub-package imports.
+**Rule / review grading**:
+- Generic sub-package(s) present + **absolute import** of a generic package + no `sys.path.insert` → **warning** (real collision risk).
+- Generic sub-package(s) present + **only relative imports** + no `sys.path.insert` → **info** (defensive note; no action needed — keep relative imports).
+- `sys.path.insert(...)` guard present → clean.
 
 ### FIX-27: StarTools.get_data_dir() Called Outside Star Subclass
 

@@ -1,10 +1,10 @@
 """Unit tests for mcp/run.py bootstrap decision logic (no exec)."""
+
 from __future__ import annotations
 
 import sys
 
 import pytest
-
 import run as run_launcher
 
 VENV_STR = "/fake/mcp/.venv/bin/python3"
