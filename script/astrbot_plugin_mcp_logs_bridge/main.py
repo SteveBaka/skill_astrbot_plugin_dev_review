@@ -24,13 +24,18 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
 
 PLUGIN_NAME = "astrbot_plugin_mcp_logs_bridge"
-PLUGIN_VERSION = "0.1.5"
+PLUGIN_VERSION = "0.1.6"
 TOKEN_HEADER = "X-MCP-Token"
 _TS_RE = re.compile(r"(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
 
 
 class MCPLogsBridge(Star):
     """在 AstrBot 进程内宿主一个 MCP SSE 服务器，同步暴露运行日志。
+
+    适配基线：AstrBot **4.27.4 / 4.28.1**（生产验证）。公开 OpenAPI 仍无
+    API-key 可读的 `/logs/*`（需 dashboard-only `system` scope），故继续用
+    进程内 LogBroker。Web 端点一律使用 **public** `astrbot.api.web`
+    （官方 plugin-pages 推荐；Quart 兼容层未使用）。
 
     数据源优先使用进程内共享的 LogBroker（log_cache 最近 500 条，含
     level/time/data/category），与 Dashboard `/logs/history` 同源。logs_tail /
@@ -42,7 +47,7 @@ class MCPLogsBridge(Star):
 
     安全：除 AstrBot 插件扩展路由自身的 plugin 域 API Key 鉴权外，本插件
     额外支持**双向共享令牌**认证。令牌取值优先级：
-      1. 插件配置 `auth_token`（_conf_schema.json）
+      1. 插件配置 `auth_token`（_conf_schema.json，`secret: true` UI 遮罩）
       2. AstrBot 进程环境变量 `ASTRBOT_LOG_MCP_TOKEN`
     客户端（MCP 宿主机）必须在请求头携带 `X-MCP-Token: <相同令牌>`，否则
     SSE / messages 端点一律返回 401。两者皆未配置时跳过令牌校验（此时仍受

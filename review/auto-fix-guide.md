@@ -68,10 +68,10 @@ class MyPlugin(Star):
 
 **Problem**: Handler missing `async`, missing `event`, **or** command arguments use a style that violates the **H1-B command arg policy** (official typed params are legal; models must not invent mixed/untyped free-text bindings).
 
-**Runtime evidence (AstrBot 4.27.4, probe `astrbot_plugin_skill_probe` v0.2.0)**:
-- `@filter.command` + `a: int, b: int` → works (`add=3`)
+**Runtime evidence (AstrBot production smoke on **4.27.4 and 4.28.1**, probe `astrbot_plugin_skill_probe` v0.2.0)**:
+- `@filter.command` + `a: int, b: int` → works (`add=3`) on **both** cores
 - `city: str = ""` → works when user supplies a token (`weather_city='Taipei'`); default applies when omitted
-- `command_group` + typed ints → works
+- `command_group` + typed ints → works (`math_add=11`)
 - Missing/wrong-type args → framework messages (`必要参数缺失` / `参数 a 类型错误`), **not** a crash
 - `event.message_str` is the **full plaintext** (`skillprobe hello`), not args-only
 

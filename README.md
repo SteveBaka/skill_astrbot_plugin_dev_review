@@ -447,7 +447,7 @@ python3 mcp/scripts/error_kb.py --store mcp/.error_kb.json propose \
 
 ## 版本要求
 
-- **AstrBot**：skill 生成契约与脚手架默认 **`astrbot_version: ">=4.27,<5"`**（H1-B / api.web / notes 已在 **4.27.4** 验证）。官方教学范围 `>=4.16,<5` 仅适用于**未使用** skill 4.27+ 契约的极简插件。**4.28.x 适配完成后**：若模板依赖 4.28-only API，再将默认升至 `">=4.28,<5"` 并重跑 smoke。（v4.27.2 为纯维护补丁，无 API 变化）
+- **AstrBot**：skill 生成契约与脚手架默认 **`astrbot_version: ">=4.27,<5"`**（H1-B / api.web / notes 已在生产 **4.27.4 与 4.28.1** 验证）。官方教学范围 `>=4.16,<5` 仅适用于**未使用** skill 4.27+ 契约的极简插件。**4.28.x UI**：Agent Runner 配置在各 **profile**（非独立 provider 页）；日志/对话在 **Data & Logs**。仅当模板依赖 4.28-only API 时，再将默认升至 `">=4.28,<5"` 并重跑 smoke。（v4.27.5 仅修首次密码显示；v4.28.0 配置结构+WebUI 重构；v4.28.1 `/reset`≡`/new` 等修复）
 - Python：工具链 **≥3.10**；官方文档侧倾向 **3.12**（推荐）
 - OpenAPI：浏览 [Scalar](https://docs.astrbot.app/scalar.html)；机器可读 [openapi.json](https://docs.astrbot.app/openapi.json)。本地可用 `mcp/scripts/check_openapi_drift.py` 与快照 diff（**已验证 4.26.8 与当前 145 paths 无路径漂移**；`PUT .../log-level` 已在核心源码但**尚未**进入公开 openapi.json）
 

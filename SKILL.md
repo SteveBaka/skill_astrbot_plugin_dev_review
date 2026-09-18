@@ -17,7 +17,7 @@ description: |
 metadata:
   short-description: AstrBot plugin dev + auto review
   version: "2.0"
-  compatibility: astrbot — **skill-generated plugins: `>=4.27,<5`** (contracts smoke-tested on 4.27.4: H1-B, public `astrbot.api.web`, notes ≥4.27). Official **teaching** examples may still show `>=4.16,<5` (ecosystem floor). Raise scaffold default to `>=4.28,<5` only after 4.28 adaptation when templates truly depend on 4.28-only APIs.
+  compatibility: astrbot — **skill-generated plugins: `>=4.27,<5`** (contracts smoke-tested on production **4.27.4 and 4.28.1**: H1-B, public `astrbot.api.web`, notes ≥4.27). Official **teaching** examples may still show `>=4.16,<5` (ecosystem floor). Raise scaffold default to `>=4.28,<5` only when templates truly depend on 4.28-only APIs (not required as of 4.28.1 validation).
   license: MIT
 ---
 
@@ -326,11 +326,11 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 
 - All handlers must use `async def` <!-- Source: guides/listen-message-event.md -->
 - All `@filter.command` must have a docstring (WebUI displays it) <!-- Source: guides/simple.md -->
-- **Command argument policy (H1-B, binding constraint for codegen models)** — official typed params are valid; AstrBot **4.27.4 smoke** confirmed typed `int`/`str`/command_group params work; `got multiple values` is **not** a blanket ban. Models **MUST** pick exactly one style per command:
+- **Command argument policy (H1-B, binding constraint for codegen models)** — official typed params are valid; AstrBot **4.27.4 and 4.28.1 smoke** confirmed typed `int`/`str`/command_group params work; `got multiple values` is **not** a blanket ban. Models **MUST** pick exactly one style per command:
   1. **Structured / numeric / flags** → typed function params with **explicit annotations** (`a: int, b: int`, `flag: bool = False`). Do **not** invent untyped extras.
   2. **Free-text remainder** (spaces, quotes, URLs) → **no extra function params**; parse from `event.message_str` and **strip the command prefix yourself** (runtime message_str is the **full plaintext**, e.g. `skillprobe hello`, not only `hello`).
   3. **Never** mix unannotated extras + free-text defaults just to “look like Python”; **never** invent APIs (`on_keyword`, wrong imports). When unsure → typed numeric or message_str remainder — not both.
-  4. Review gate: untyped extras = 🟡 FIX-02 warning; free-text `str` extras = 🟡 recommend message_str remainder; annotated `int`/`float`/`bool` extras = 🔵 info (allowed). <!-- Source: official listen-message-event.md + 4.27.4 smoke H1 -->
+  4. Review gate: untyped extras = 🟡 FIX-02 warning; free-text `str` extras = 🟡 recommend message_str remainder; annotated `int`/`float`/`bool` extras = 🔵 info (allowed). <!-- Source: official listen-message-event.md + 4.27.4/4.28.1 smoke H1 -->
 - `@filter.command_group` must use function pattern (`def math(): pass`), NOT class <!-- Source: guides/listen-message-event.md -->
 - `@filter.permission_type` cannot combine with `@filter.llm_tool` <!-- Source: guides/listen-message-event.md -->
 - `@filter.llm_tool` Args: must follow `param_name(type): description` <!-- Source: guides/ai.md -->
@@ -346,7 +346,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 ### Project, Gates & Review
 
 - **Identity gate**: before scaffold, confirm plugin `name` = `astrbot_plugin_<slug>` and `author` with the user
-- **Version gate (load floor)**: skill-generated `metadata.astrbot_version` defaults to **`">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`). Official teaching range `">=4.16,<5"` is **not** the scaffold default — metadata is a **hard load gate**, not a soft hint. If the user's core is older, either narrow APIs to what that core has **and** write a matching range, or they must upgrade / ignore-install knowingly. **Do not** emit `">=4.28,<5"` until 4.28-breaking templates are actually in use.
+- **Version gate (load floor)**: skill-generated `metadata.astrbot_version` defaults to **`">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`). Official teaching range `">=4.16,<5"` is **not** the scaffold default — metadata is a **hard load gate**, not a soft hint. Validated cores: **4.27.4 / 4.28.1** (`version_check(>=4.27,<5)` supported on both). If the user's core is older, either narrow APIs to what that core has **and** write a matching range, or they must upgrade / ignore-install knowingly. **Do not** emit `">=4.28,<5"` until 4.28-breaking templates are actually in use (as of 4.28.1, Star/filter/api.web surface matches skill contracts).
 - **Pre-code gate (Step 0.5)**: official Always-Read + import table §1 + FIX-00/02 + one type example — **before** first `main.py`; no coding from bare memory for astrbot imports/handlers
 - After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable; prefer MCP `astrbot_review_path` then open only matching FIX sections
 - After features complete or user audit request, run **Phase B** full-tree review (accuracy, security, completeness)
@@ -413,12 +413,13 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - `support_platforms` field: list of platform keys (e.g., `telegram`, `discord`, `aiocqhttp`) <!-- Source: plugin-new.md -->
 - `astrbot_version` field: PEP 440 format, no `v` prefix. **Skill scaffold default: `">=4.27,<5"`** (matches generated contracts). Official docs examples may show `">=4.16,<5"` — use that **only** for plugins that stay on the ancient public surface (Star + command + logger) and were verified on older cores. Do not invent `v` prefixes. <!-- Source: plugin-new.md + skill contract floor -->
 - `skills/` directory: bundle Skill definitions with plugin; auto-registered by AstrBot <!-- Source: plugin-new.md -->
-- Plugin enabled ≠ every LLM tool enabled — WebUI can disable tools independently (≥4.26.0 / 4.26.2) <!-- Source: releases -->
+- **Dashboard (AstrBot ≥4.28)**: WebUI redesigned — logs / traces / conversations / data under **Data & Logs**; **Agent Runner is no longer a standalone provider page** (settings live on each **profile**). Post-install hints still point at Plugins + WebChat profile `plugin_dev_skill`; when coaching users on 4.28 UI, use the new profile-centric layout. <!-- Source: v4.28.0 release #9820/#9821/#9846 -->
+- **Plugin enabled ≠ every LLM tool enabled** — WebUI can disable tools independently (≥4.26.0 / 4.26.2) <!-- Source: releases -->
 - Plugin uninstall clears plugin KV storage (≥4.26.2) — do not assume KV survives uninstall <!-- Source: releases -->
 - `_conf_schema.json` may include UTF-8 BOM (≥4.26.7); still prefer UTF-8 without BOM for editors <!-- Source: releases -->
 - Dict-type fields in `_conf_schema.json`: core maps defaults correctly (≥4.26.8 #9414) — still use explicit schema defaults; do not rely on accidental `{}` sharing <!-- Source: v4.26.8 -->
 - Marketplace publish: use [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI market syncs from Cloud); package **ZIP ≤ 16MB**; include clean tree (no `.git` / `__pycache__` / venv) — aligns with MCP `zip_pack` excludes <!-- Source: plugin-publish.md / v4.26.8 -->
-- Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (source ≥4.26.8 #9342; **in public OpenAPI since 4.27.0**) <!-- Source: v4.26.8 source / 4.27.0 spec -->
+- Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (source ≥4.26.8 #9342; **in public OpenAPI since 4.27.0**; **re-verified on 4.28.1**) <!-- Source: v4.26.8 source / 4.27.0 spec / 4.28.1 runtime -->
 - Prefer official recommended Python **3.12** for development; skill minimum remains 3.10 for tooling <!-- Source: docs 4.26.2 -->
 
 ---
@@ -456,6 +457,7 @@ Goal: stronger Star understanding **and** low token/time cost via **strict on-de
 | Task | File |
 |------|------|
 | New plugin | `plugin-development-workflow.md` |
+| **4.28 / OpenAPI / logs** | `references/astrbot-4.28-plugin-notes.md` |
 | LLM tools | `agent/tools.md` |
 | Cron | `agent/cron.md` |
 | Hooks | `agent/hooks.md` |

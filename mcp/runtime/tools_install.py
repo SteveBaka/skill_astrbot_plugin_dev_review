@@ -122,6 +122,195 @@ def _components_look_unchanged(before: dict[str, Any] | None, after: dict[str, A
     return b == a
 
 
+def _install_fingerprint_compare(
+    before_snap: dict[str, Any] | None,
+    after_snap: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """
+    Structured before/after install fingerprint (plan B: version as evidence).
+
+    Includes:
+      - version (primary positive signal when bump succeeded)
+      - component metadata fingerprint (type/name/command/description)
+    Does NOT invent on-disk main.py hashes (OpenAPI does not expose them).
+    """
+    before_snap = before_snap or {}
+    after_snap = after_snap or {}
+    v_before = str(before_snap.get("version") or "")
+    v_after = str(after_snap.get("version") or "")
+    comps_same = _components_look_unchanged(before_snap, after_snap)
+    c_before = before_snap.get("components_count")
+    c_after = after_snap.get("components_count")
+    delta: list[str] = []
+    if v_before != v_after:
+        delta.append(f"version {v_before or '?'} -> {v_after or '?'}")
+    if not comps_same:
+        delta.append("components fingerprint changed")
+    elif c_before is not None and c_after is not None and c_before == c_after:
+        delta.append("components fingerprint identical")
+    return {
+        "version_before": v_before,
+        "version_after": v_after,
+        "version_changed": bool(v_before) and bool(v_after) and v_before != v_after,
+        "components_same": comps_same,
+        "components_count_before": c_before,
+        "components_count_after": c_after,
+        "notes": delta,
+    }
+
+
+def _classify_install_staleness(
+    before_snap: dict[str, Any] | None,
+    after_snap: dict[str, Any] | None,
+    *,
+    refresh_mode: str,
+    pack_main_py_sha256_16: str | None = None,
+    last_pack_main_py_sha256_16: str | None = None,
+) -> dict[str, Any]:
+    """
+    Plan A+D: tiered stale-install classification for agent-safe install_path output.
+
+    Decision (upload already succeeded; caller handles failed separately):
+      1. version_changed (+ not failed) → install_ok_version_bumped
+         — do NOT emit possible_stale_install (avoids false-positive force_refresh).
+      2. components_same AND version_same:
+         - pack hash known + equals last hash → possible_stale_install / high
+         - pack hash changed vs last → pack_changed_components_same / info
+         - last hash unknown → possible_stale_install / low (conservative same-version)
+      3. else → install_ok (components or metadata moved in a useful way)
+
+    refresh_mode != upload_only (force_refresh reinstall) → prefer install_ok unless
+    version+components both unchanged after reinstall (still low confidence stale).
+    """
+    fp = _install_fingerprint_compare(before_snap, after_snap)
+    v_changed = fp["version_changed"]
+    comps_same = fp["components_same"]
+    present_before = bool((before_snap or {}).get("present"))
+    present_after = bool((after_snap or {}).get("present"))
+
+    pack_hash = pack_main_py_sha256_16 or None
+    last_hash = last_pack_main_py_sha256_16 or None
+    pack_hash_changed = pack_hash is not None and last_hash is not None and pack_hash != last_hash
+    pack_hash_same = pack_hash is not None and last_hash is not None and pack_hash == last_hash
+
+    if not present_before or not present_after:
+        return {
+            "status": "install_ok",
+            "possible_stale_install": False,
+            "stale_confidence": "none",
+            "install_fingerprint": fp,
+            "pack_main_py_sha256_16": pack_hash,
+            "stale_hint": "",
+            "agent_action": "continue",
+        }
+
+    # 1) Version bump is the strongest non-stale signal (A + B.version)
+    if v_changed and comps_same:
+        return {
+            "status": "install_ok_version_bumped",
+            "possible_stale_install": False,
+            "stale_confidence": "none",
+            "install_fingerprint": fp,
+            "pack_main_py_sha256_16": pack_hash,
+            "stale_hint": (
+                f"Metadata version changed {fp['version_before']} -> {fp['version_after']}; "
+                "component fingerprint is unchanged because command names/docstrings "
+                "did not change — this is NORMAL for handler-internal edits. "
+                "Do NOT force_refresh solely for this. If you only changed handler "
+                "internals, verify behavior with smoke/WebChat."
+            ),
+            "agent_action": ("treat_as_success; optional smoke if behavior must be proven"),
+        }
+    if v_changed and not comps_same:
+        return {
+            "status": "install_ok",
+            "possible_stale_install": False,
+            "stale_confidence": "none",
+            "install_fingerprint": fp,
+            "pack_main_py_sha256_16": pack_hash,
+            "stale_hint": (
+                f"Version bumped ({fp['version_before']} -> {fp['version_after']}) and "
+                "component fingerprint changed — install likely replaced code/registration."
+            ),
+            "agent_action": "continue",
+        }
+
+    # 2) Same version + same components → tier by pack hash evidence
+    if comps_same and not v_changed:
+        if refresh_mode != "upload_only":
+            return {
+                "status": "install_ok",
+                "possible_stale_install": False,
+                "stale_confidence": "none",
+                "install_fingerprint": fp,
+                "pack_main_py_sha256_16": pack_hash,
+                "stale_hint": (
+                    "force_refresh reinstall completed; component fingerprint unchanged "
+                    "with same version is expected when only handler internals changed."
+                ),
+                "agent_action": "continue; smoke if needed",
+            }
+        if pack_hash_same:
+            return {
+                "status": "possible_stale_install",
+                "possible_stale_install": True,
+                "stale_confidence": "high",
+                "install_fingerprint": fp,
+                "pack_main_py_sha256_16": pack_hash,
+                "last_pack_main_py_sha256_16": last_hash,
+                "stale_hint": (
+                    "Same metadata.version, identical component fingerprint, AND "
+                    "identical main.py pack hash as the previous upload — the package "
+                    "content likely did not change. Bump metadata.version or use "
+                    "force_refresh=true if you expected new code."
+                ),
+                "agent_action": ("bump version or force_refresh only if code should have changed"),
+            }
+        if pack_hash_changed:
+            return {
+                "status": "pack_changed_components_same",
+                "possible_stale_install": False,
+                "stale_confidence": "none",
+                "install_fingerprint": fp,
+                "pack_main_py_sha256_16": pack_hash,
+                "last_pack_main_py_sha256_16": last_hash,
+                "stale_hint": (
+                    "Same version and same command/docstring fingerprint, but packed "
+                    "main.py hash differs from the last upload — handler-internal change "
+                    "is likely. Prefer smoke/WebChat over force_refresh."
+                ),
+                "agent_action": "smoke to verify behavior; avoid auto force_refresh",
+            }
+        # No last-hash baseline (or unknown) — conservative low-confidence stale
+        return {
+            "status": "possible_stale_install",
+            "possible_stale_install": True,
+            "stale_confidence": "low",
+            "install_fingerprint": fp,
+            "pack_main_py_sha256_16": pack_hash,
+            "last_pack_main_py_sha256_16": last_hash,
+            "stale_hint": (
+                "Same metadata.version and identical component fingerprint after "
+                "upload_only re-upload. AstrBot does not guarantee same-version file "
+                "replacement. Confidence is LOW when pack hash baseline is unknown — "
+                "prefer bumping metadata.version or smoke first; use force_refresh=true "
+                "only if behavior is still old."
+            ),
+            "agent_action": ("smoke first; then bump version or force_refresh if behavior stale"),
+        }
+
+    # 3) Components changed but version same — treat as successful registration update
+    return {
+        "status": "install_ok",
+        "possible_stale_install": False,
+        "stale_confidence": "none",
+        "install_fingerprint": fp,
+        "pack_main_py_sha256_16": pack_hash,
+        "stale_hint": "",
+        "agent_action": "continue",
+    }
+
+
 def _uninstall_keep_all(client: AstrBotClient, plugin_id: str) -> dict[str, Any]:
     """
     Uninstall preserving config + data (OpenAPI delete_*=false).
@@ -275,7 +464,14 @@ def astrbot_plugin_install_path(
     ignore_version_check: reserved / future form field if API accepts extra fields
     force_refresh: if true and plugin already present, uninstall(keep config+data)
         then upload once — use when same-version re-upload leaves stale code.
-        Default false: never auto-uninstall; may set possible_stale_install warning.
+        Default false: never auto-uninstall.
+
+    Staleness (plan A+D + version evidence):
+      install_status in {install_ok, install_ok_version_bumped, pack_changed_components_same,
+      possible_stale_install}. possible_stale_install is NOT set when metadata.version
+      changed after upload (avoids false-positive force_refresh). When version is unchanged
+      and component fingerprint is identical, stale_confidence is low|high (high only if
+      packed main.py hash matches the previous upload baseline).
     """
     cfg = load_config()
     if not cfg.allow_mutations:
@@ -445,10 +641,12 @@ def astrbot_plugin_install_path(
         "update_policy": {
             "preferred": "re-upload via install_path then reload (no uninstall)",
             "stale_same_version": (
-                "success=true does NOT guarantee on-disk code replaced. "
-                "If behavior/components unchanged: bump metadata.version, or "
-                "force_refresh=true (uninstall keep config/data → install), or "
-                "manual uninstall keep_* then install_path."
+                "success=true does NOT guarantee on-disk code replaced when "
+                "metadata.version is unchanged. Check install_status / "
+                "stale_confidence: version bump → install_ok_version_bumped "
+                "(no force_refresh needed); same-version + identical components → "
+                "possible_stale_install low|high. Prefer smoke, then bump version "
+                "or force_refresh=true (keep config/data) only if behavior is old."
             ),
             "fallback_same_name_conflict": (
                 "uninstall keep_config/keep_data true, then install_path again"
@@ -498,23 +696,36 @@ def astrbot_plugin_install_path(
         "components_count": after_snap.get("components_count"),
     }
 
-    # Stale detection: was installed before, upload_only, components fingerprint identical
-    possible_stale = False
-    if (
-        refresh_mode == "upload_only"
-        and before_snap.get("present")
-        and _components_look_unchanged(before_snap, after_snap)
-    ):
-        possible_stale = True
+    # Stale detection (A+D + version evidence): tiered — version bump is not stale.
+    pid_key = str(plugin_id or guessed_id)
+    last_pack = _LAST_PACK_HASH_BY_PLUGIN.get(pid_key)
+    classified = _classify_install_staleness(
+        before_snap,
+        after_snap,
+        refresh_mode=refresh_mode,
+        pack_main_py_sha256_16=main_hash,
+        last_pack_main_py_sha256_16=last_pack,
+    )
+    if main_hash:
+        _LAST_PACK_HASH_BY_PLUGIN[pid_key] = main_hash
+
+    out["install_status"] = classified["status"]
+    out["install_fingerprint"] = classified["install_fingerprint"]
+    out["stale_confidence"] = classified["stale_confidence"]
+    out["agent_action"] = classified.get("agent_action") or "continue"
+    if classified.get("pack_main_py_sha256_16"):
+        out["pack_main_py_sha256_16"] = classified["pack_main_py_sha256_16"]
+    if classified.get("last_pack_main_py_sha256_16"):
+        out["last_pack_main_py_sha256_16"] = classified["last_pack_main_py_sha256_16"]
+    if classified.get("stale_hint"):
+        out["stale_hint"] = classified["stale_hint"]
+
+    possible_stale = bool(classified.get("possible_stale_install"))
+    if possible_stale:
         out["warning"] = "possible_stale_install"
         out["possible_stale_install"] = True
-        out["stale_hint"] = (
-            "Component metadata fingerprint unchanged after re-upload (same version "
-            "often does not replace files). Options: (1) bump metadata.yaml version "
-            "and install_path again; (2) install_path(..., force_refresh=true) which "
-            "uninstalls with keep_config+keep_data then re-uploads; (3) manual "
-            "uninstall keep_* then install. Do NOT assume success=true means new code."
-        )
+    else:
+        out["possible_stale_install"] = False
 
     in_failed = bool(steps.get("plugin_in_failed"))
     out["success"] = bool(upload.ok and not in_failed)
@@ -533,7 +744,7 @@ def astrbot_plugin_install_path(
             ]
             out["failure_diagnosis"] = mine or analysis["diagnoses"]
             recorded = record_diagnoses_if_enabled(
-                out["failure_diagnosis"], source=f"install:{str(plugin_id or guessed_id)}"
+                out["failure_diagnosis"], source=f"install:{pid_key}"
             )
             if recorded:
                 out["error_kb_recorded"] = recorded
@@ -543,28 +754,53 @@ def astrbot_plugin_install_path(
     try:
         from .tools_profile import post_install_dashboard_hints
 
-        out["dashboard_hints"] = post_install_dashboard_hints(str(plugin_id or guessed_id))
+        out["dashboard_hints"] = post_install_dashboard_hints(pid_key)
     except Exception as exc:  # noqa: BLE001
         out["dashboard_hints"] = {"ok": False, "error": repr(exc)}
 
+    status = classified["status"]
+    v_b = classified["install_fingerprint"].get("version_before") or "?"
+    v_a = classified["install_fingerprint"].get("version_after") or "?"
     if in_failed:
         out["next_step"] = (
             "Install uploaded but plugin is in failed list — fix load error, "
             "then astrbot_plugin_reload(failed=true) or re-upload."
         )
-    elif possible_stale:
+    elif status == "install_ok_version_bumped":
         out["next_step"] = (
-            "Upload reported OK but install may be stale (see stale_hint). "
-            "Verify behavior; use force_refresh=true or bump version if code did not update."
+            f"Install OK — version {v_b} -> {v_a}. Component fingerprint unchanged "
+            "is expected when commands/docstrings did not change. "
+            "Do NOT force_refresh solely for that. Smoke only if handler-internal "
+            "behavior must be proven."
+        )
+    elif status == "pack_changed_components_same":
+        out["next_step"] = (
+            "Install OK — packed main.py hash changed with same version/components. "
+            "Prefer smoke over force_refresh to confirm handler behavior."
+        )
+    elif possible_stale:
+        conf = classified.get("stale_confidence") or "low"
+        out["next_step"] = (
+            f"Upload OK but stale_confidence={conf} (see stale_hint). "
+            "LOW: smoke first; bump version or force_refresh only if behavior is old. "
+            "HIGH (same pack hash): bump metadata.version or "
+            "install_path(..., force_refresh=true)."
         )
     else:
         out["next_step"] = (
             "OK. Configure in Dashboard if needed (see dashboard_hints). "
             "Ensure profile plugin_dev_skill (astrbot_ensure_plugin_dev_skill). "
             "User tests in WebChat; Agent does not auto chat_probe. "
-            "Dev loop: edit → install_path again; if no effect, force_refresh or bump version."
+            "Dev loop: edit → install_path again; if same-version behavior is stale, "
+            "bump version or force_refresh."
         )
     return _dumps(out)
+
+
+# Process-local pack-hash baseline (plan A): high-confidence stale only when
+# same-version re-upload has the same main.py pack hash in this MCP session.
+# Missing baseline → stale_confidence=low (conservative, not a false hard fail).
+_LAST_PACK_HASH_BY_PLUGIN: dict[str, str] = {}
 
 
 def astrbot_plugin_pack_preview(path: str) -> str:

@@ -401,7 +401,8 @@ class _FileChecker(ast.NodeVisitor):
                         "info",
                         node.lineno,
                         f"command handler `{node.name}` uses typed structured params {structured}",
-                        "H1-B: official-style typed params — allowed (AstrBot 4.27.4 smoke).",
+                        "H1-B: official-style typed params — allowed "
+                        "(AstrBot 4.27.4 / 4.28.1 smoke).",
                     )
                 else:
                     self.out(

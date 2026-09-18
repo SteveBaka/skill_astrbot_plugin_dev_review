@@ -117,6 +117,12 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_plugin_uninstall` | **[P2]** DELETE uninstall (**mutations** + confirm; **default keep config/data**) |
 | `astrbot_plugin_pack_preview` | **[P2]** Dry-run local ZIP pack (gitignore; **no upload**) |
 | `astrbot_plugin_install_path` | **[P2]** Scheme A: pack → upload → enable → reload → failed (**mutations**; optional `force_refresh`) |
+| `astrbot_openapi_capabilities` | **[P2+]** Which newer OpenAPI plugin features this instance supports (read-only; snapshot + live best-effort + core version) |
+| `astrbot_plugin_install_url` | **[P2+]** Install from remote URL — **degrades** to `install_path` when core lacks endpoint |
+| `astrbot_plugin_install_git` | **[P2+]** Install from git remote — **degradable** |
+| `astrbot_plugin_update` | **[P2+]** Plugin update API — **degrades** to Scheme A when unsupported |
+| `astrbot_plugin_changelog` | **[P2+]** Changelog read — **degradable** |
+| `astrbot_plugin_validate_repo` | **[P2+]** Repo validate — **degradable** |
 | `astrbot_plugin_failed_remove` | **[P2]** Remove a failed-plugin record (`DELETE .../plugins/failed/{id}`, v4.27.0) — the only API that clears stale failed entries blocking all mutations (**mutations** + confirm; keep config/data by default) |
 | `astrbot_providers_brief` | **[P2.5]** Provider id/name list (no secrets) |
 | `astrbot_config_profiles_brief` | **[P2.5]** Profile names/ids only |
@@ -288,14 +294,29 @@ edit source on MCP host machine
 | Field | Meaning |
 |-------|---------|
 | `success=true` + `plugin_in_failed=false` | Load path OK — **not** proof that every local edit is on disk |
+| `install_status` | `install_ok` \| `install_ok_version_bumped` \| `pack_changed_components_same` \| `possible_stale_install` |
+| `install_fingerprint` | version before/after + component fingerprint compare |
+| `stale_confidence` | `none` \| `low` \| `high` (only with `possible_stale_install`) |
+| `agent_action` | Short contract for the agent (e.g. treat_as_success, smoke first) |
 | `pack_main_py_sha256_16` | Fingerprint of `main.py` inside the uploaded ZIP |
+| `last_pack_main_py_sha256_16` | Previous upload hash in this MCP session (if any) |
 | `snapshot_before` / `snapshot_after` | Version + component fingerprint (type/name/command/description) |
-| `warning=possible_stale_install` | Before/after component fingerprint identical after re-upload → try bump version or `force_refresh=true` |
+| `warning=possible_stale_install` | Same version + identical component fingerprint; see `stale_confidence` |
 | `refresh_mode` | `upload_only` (default) or `reinstall_keep_config_data` (when force_refresh ran) |
 | `pack_failed` / `not_a_plugin` | Fix local path structure before retry |
 | `same_name_conflict_suspected=true` | Fallback uninstall-keep-then-install (or `force_refresh`) only after primary re-upload fails |
 
-**Agent rule:** After code changes, if smoke/behavior still looks old, do **not** only re-`install_path` blindly — bump version or `force_refresh=true` (still keeps config/data unless user explicitly asked to wipe).
+**Agent contract (A+D + version evidence):**
+
+| `install_status` | Action |
+|------------------|--------|
+| `install_ok_version_bumped` | Version changed after upload; components same → **success**. Do **not** force_refresh only because docstrings/commands are unchanged. Smoke only if handler internals must be proven. |
+| `pack_changed_components_same` | Same version/components; pack hash ≠ last upload → prefer **smoke** over force_refresh |
+| `possible_stale_install` + `stale_confidence=low` | Same version + same components; no pack-hash baseline → **smoke first**; bump/force_refresh only if behavior is old |
+| `possible_stale_install` + `stale_confidence=high` | Same version + same components + **same pack hash** → package likely unchanged; bump `metadata.version` or `force_refresh=true` |
+| `install_ok` | Continue |
+
+**Agent rule:** After code changes, if smoke/behavior still looks old, do **not** only re-`install_path` blindly — read `install_status`/`stale_confidence`; bump version or `force_refresh=true` (still keeps config/data unless user explicitly asked to wipe).
 
 ### Dev profile `plugin_dev_skill` (P2.5)
 
@@ -481,11 +502,13 @@ system-scope workaround is attempted (that scope is not grantable to API keys by
   new `install/git`, `conversations*`, `sessions*`; removed `files/tokens/{id}`.
   **v4.27.2 (2026-08-05):** pure maintenance/fix patch — live spec still 162 paths,
   no API/scope changes; no skill update needed.
-  **Skill validation refresh (2026-09-17, running core 4.27.4):** live spec **163** paths;
-  drift `+/api/v1/conversations/filter-options` (non-runtime); runtime-used 21 endpoints
-  unaffected; local snapshot refreshed with `--update`. Next-core prep: keep following
-  official `docs.astrbot.app/openapi.json` + public `astrbot.api.*` surfaces — do not
-  hardcode Quart/core-only paths in new templates.
+  **Skill validation refresh (2026-09-17, running core 4.27.4 then 4.28.1):**
+  live spec **163** paths; on 4.28.1 `check_openapi_drift` reported **ETag 304 — no drift**
+  vs the refreshed snapshot; runtime-used 21 endpoints unaffected. H1-B probe and
+  plugin manage APIs (install/reload/log-level/chat_probe) re-verified on **4.28.1**.
+  Next-core prep: keep following official `docs.astrbot.app/openapi.json` + public
+  `astrbot.api.*` surfaces — do not hardcode Quart/core-only paths in new templates.
+  Scaffold load floor remains `">=4.27,<5"` (supported on 4.28.1).
 - **Error-fingerprint KB → auto-fix-guide** (`mcp/runtime/error_fingerprint.py` + `mcp/scripts/error_kb.py`):
   captures **desensitized** error shapes (paths/UUID/token/plugin-id/line numbers
   stripped) during regression/smoke; proposes new `auto-fix-guide.md` FIX entries

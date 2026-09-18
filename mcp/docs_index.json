@@ -37,6 +37,7 @@
     "REVIEW-REPORTS": "Plugin Type Review Reports"
   },
   "references": {
+    "astrbot-4.28-plugin-notes": "AstrBot 4.28 Plugin Development Notes",
     "best-practices": "AstrBot Plugin Development Best Practices",
     "conf-schema": "Configuration Schema (`_conf_schema.json`)",
     "core-concepts": "AstrBot Core API Reference",

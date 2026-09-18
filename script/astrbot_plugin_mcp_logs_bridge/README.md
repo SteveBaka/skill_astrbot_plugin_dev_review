@@ -2,9 +2,13 @@
 
 在 AstrBot 进程内宿主一个 **MCP 服务器**（SSE 传输），通过 MCP 同步暴露 AstrBot 运行日志，供本开发 skill（`skill_astrbot_plugin_dev_review`）的 MCP 客户端或任意 MCP 客户端读取。
 
-## 为什么需要它
+**版本**：v0.1.6 · **适配**：AstrBot `>=4.27,<5`（生产验证 **4.27.4 / 4.28.1**）
 
-AstrBot 的公开 OpenAPI 中没有任何 API Key 可用的日志接口（`/logs/history`、`/logs/live` 需要 `system` 域，仅 Dashboard 会话可用）。本插件在进程内直接读取共享的 `LogBroker`（与 Dashboard `/logs/history` 同源），并以标准 MCP 协议对外提供服务，填补了 skill 无法读取运行日志的缺口。
+## 为什么需要它（4.28.1 仍成立）
+
+AstrBot 的公开 OpenAPI 中**仍然**没有任何 API Key 可用的日志接口（`/logs/history`、`/logs/live` 需要 `system` 域，仅 Dashboard 会话可用）。对 4.28.1 live OpenAPI 做 drift 检查：**ETag 304，无新增 `/logs/*` public 路径**。因此本插件继续在进程内读取共享的 `LogBroker`（与 Dashboard `/logs/history` 同源），以标准 MCP 协议对外提供服务。
+
+Web 注册一律使用官方 public API：`from astrbot.api.web import json_response, stream_response, request`（对齐 `guides/plugin-pages.md` / v4.28.1）。
 
 ## 功能
 
@@ -27,14 +31,14 @@ AstrBot 的公开 OpenAPI 中没有任何 API Key 可用的日志接口（`/logs
 - SSE 端点：`http://<host>:<port>/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/sse`
 - 消息端点：`http://<host>:<port>/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/messages`
 
-两个端点都要求 `plugin` 作用域的 API Key（`X-API-Key` 请求头）。
+两个端点都要求 `plugin` 作用域的 API Key（`X-API-Key` 请求头）。扩展路由前缀在 4.28.1 仍为 `/api/v1/plugins/extensions/<plugin_name>/...`（与 skill MCP `tools_logs.py` 一致）。
 
 ## 安全（双向共享令牌，推荐启用）
 
 除 AstrBot 插件扩展路由自身的 `plugin` 域 API Key 鉴权外，本插件支持**双向共享
 令牌**认证，避免误连到错误的桥接服务：
 
-- **插件侧**：配置 `auth_token`（`_conf_schema.json`），或在 AstrBot 进程环境变量
+- **插件侧**：配置 `auth_token`（`_conf_schema.json`，`secret: true` — Dashboard ≥4.28 默认遮罩），或在 AstrBot 进程环境变量
   中设置 `ASTRBOT_LOG_MCP_TOKEN`（配置优先）。两者皆空时不校验（仍受 API Key 保护，
   但不推荐仅依赖它）。
 - **客户端侧**：请求头携带 `X-MCP-Token: <相同令牌>`。MCP 宿主机在
@@ -71,10 +75,19 @@ MCP 客户端注册示例（带令牌）：
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `enable_bridge` | bool | true | 是否启用 MCP 日志桥接服务 |
-| `auth_token` | string | 空 | 双向共享令牌（`X-MCP-Token`）。留空则回退读取 AstrBot 进程环境变量 `ASTRBOT_LOG_MCP_TOKEN`；两者皆空时不校验（不推荐，仅依赖 AstrBot API Key 鉴权） |
+| `auth_token` | string | 空 | 双向共享令牌（`X-MCP-Token`）；`secret: true` |
 | `log_file_path` | string | 空 | 可选：日志文件路径，供 `source=file` 模式读取。与 AstrBot 本体语义一致：相对路径以 data 目录为基准（如 `logs/astrbot.log`），绝对路径原样使用；留空则用默认 `<data>/logs/astrbot.log` |
 | `history_limit` | int | 200 | `logs_history` 未传 limit 时的默认上限（1-500，超出丢弃，最新在前） |
 | `search_limit` | int | 200 | `logs_search` 未传 limit 时的默认上限（1-500，最新在前截断） |
+
+## 4.28 插件开发对照（本仓库 skill）
+
+| 主題 | 本插件行為 |
+|------|------------|
+| OpenAPI | 4.28.1 仍无 public `/logs/*`；桥接仍必要 |
+| Web 注册 | `register_web_api` + `astrbot.api.web`（非 Quart） |
+| 载入闸 | `astrbot_version: ">=4.27,<5"` |
+| 生产验证 | 4.28.1 `logs_history` / `logs_tail` / `logs_search` 返回 `source=broker` |
 
 ## 安全
 
@@ -87,3 +100,4 @@ MCP 客户端注册示例（带令牌）：
 ## 依赖
 
 `mcp>=1.8.0,<2`、`anyio>=4.0`（AstrBot 运行时已自带）。
+

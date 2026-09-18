@@ -20,11 +20,14 @@ PLUGIN_NAME_RE = re.compile(r"^astrbot_plugin_[a-z0-9_]+$")
 
 # Skill-generated plugin metadata default (NOT the official docs teaching example).
 # Official plugin-new.md examples use ">=4.16,<5"; this skill encodes 4.27+ contracts
-# (H1-B command args smoke, astrbot.api.web scaffold, log-level notes) so scaffold
-# metadata must declare a load floor that matches what we generate.
-# After a breaking 4.28 adaptation that templates actually depend on, bump to ">=4.28,<5".
+# (H1-B command args smoke, astrbot.api.web scaffold, log-level notes).
+# Validated on production cores **4.27.4 and 4.28.1** (typed args / command_group /
+# message_str remainder; no Star filter/API break in v4.28.1 tag surface).
+# Raise to ">=4.28,<5" only when templates actually depend on 4.28-only APIs.
 SCAFFOLD_ASTRBOT_VERSION = ">=4.27,<5"
 OFFICIAL_TEACHING_ASTRBOT_VERSION = ">=4.16,<5"
+# Production cores where skill contracts were smoke-tested
+SKILL_VALIDATED_CORES = ("4.27.4", "4.28.1")
 
 # ── FIX-00 import contracts ────────────────────────────────────
 
@@ -130,19 +133,21 @@ CONTRACT_PROVENANCE: dict[str, dict[str, str]] = {
     "FIX-02": {
         "source_type": "tag+smoke",
         "ref": "docs/en/dev/star/guides/listen-message-event.md + "
-        "AstrBot 4.27.4 smoke (astrbot_plugin_skill_probe v0.2.0)",
-        "note": "Typed command params are official and work on 4.27.4; "
-        "H1-B policy constrains models to annotated structured params or "
-        "message_str remainder — not a blanket ban on function parameters.",
+        "AstrBot smoke astrbot_plugin_skill_probe v0.2.0 on **4.27.4 and 4.28.1**",
+        "note": "Typed command params are official; work on 4.27.4 **and 4.28.1**. "
+        "H1-B constrains models to annotated structured params or message_str "
+        "remainder — not a blanket ban on function parameters.",
     },
     "public-api-web": {
         "source_type": "tag",
-        "ref": "docs/en/dev/star/guides/plugin-pages.md + astrbot/api/web.py",
+        "ref": "docs/en/dev/star/guides/plugin-pages.md + astrbot/api/web.py "
+        "(still recommended on v4.28.1 tag)",
         "note": "New plugins use astrbot.api.web helpers; Quart remains a legacy load path.",
     },
     "public-api-adapter": {
         "source_type": "tag",
-        "ref": "docs/en/dev/plugin-platform-adapter.md + astrbot/api/platform/__init__.py",
+        "ref": "docs/en/dev/plugin-platform-adapter.md + astrbot/api/platform/__init__.py "
+        "(v4.28.1 re-export unchanged)",
         "note": "register_platform_adapter public path is astrbot.api.platform; "
         "MessageSesion lives in core.platform.message_session (official docs).",
     },
@@ -157,8 +162,19 @@ COMMAND_ARG_POLICY = {
         "remainder after stripping command prefix; untyped extras forbidden"
     ),
     "message_str_includes_command": True,
-    "runtime_smoke": "AstrBot 4.27.4 typed binding OK; missing/type → framework error",
+    "runtime_smoke": (
+        "AstrBot 4.27.4 and **4.28.1**: typed binding OK; missing/type → framework error"
+    ),
 }
+
+# OpenAPI optional features — degrade on older cores instead of hard-fail.
+# Source of truth for paths: mcp/runtime/openapi_caps.py OPENAPI_FEATURES.
+# install_path (Scheme A) is the portable baseline on all cores.
+OPENAPI_DEGRADATION_POLICY = (
+    "newer endpoints (install/url, install/git, plugin update, changelog, "
+    "validate/repo) are optional; tools return error_kind=openapi_unsupported|"
+    "core_version_too_old with fallback=install_path when absent"
+)
 
 GENERIC_PKG_NAMES: frozenset[str] = frozenset(
     {"services", "handlers", "utils", "models", "core", "api", "common"}
@@ -216,6 +232,8 @@ STDLIB_TOP_LEVEL: frozenset[str] = frozenset(
         "zipfile",
         "tarfile",
         "gzip",
+        "glob",
+        "fnmatch",
         "mimetypes",
         "wave",
         "secrets",

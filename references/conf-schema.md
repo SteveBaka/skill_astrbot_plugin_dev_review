@@ -13,6 +13,10 @@ AstrBot uses schemas for automatic configuration parsing and WebUI visualization
 | `default` | any | Default value |
 | `options` | list | Dropdown options |
 | `invisible` | bool | Whether hidden |
+| `secret` | bool | **Mask in Dashboard** for `string` / string `list` (API keys, tokens, passwords). UI-only mask — value stays plaintext in config file. Plugins must not log/echo secrets. **AstrBot ≥4.28 (#9824)** also masks sensitive profile fields by default. |
+
+> **≥4.28 notes for plugin authors**: official `plugin-config.md` (v4.28.1) still documents `secret`, `file`, `dict` (`template_schema`), `template_list` (`display_item` / `hide_hint_in_list`). Internal `_special` values such as `select_agent_runner_provider:*` / `select_plugin_set` may change — **do not use** in third-party plugins. `dict` user-defined content is preserved on config save (#9958).
+
 
 ## Type Examples
 

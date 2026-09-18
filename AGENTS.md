@@ -29,6 +29,7 @@ This directory is a **complete skill system** for AstrBot plugin development wit
 | Task | Read |
 |------|------|
 | Create a plugin | `plugin-development-workflow.md` |
+| **4.28 / OpenAPI / log bridge** | `references/astrbot-4.28-plugin-notes.md` |
 | Pick plugin type | `plugin-types/README.md` |
 | Check import paths | `review/main-file-checklist.md` §1 |
 | Review code | `review/review-workflow.md` |
@@ -70,7 +71,7 @@ tools `astrbot_logs_history` / `astrbot_logs_tail` / `astrbot_logs_search` are
 host and the plugin's `auth_token` (or AstrBot env `ASTRBOT_LOG_MCP_TOKEN`) to the SAME
 value for bidirectional `X-MCP-Token` auth. Full setup: `mcp/SETUP.md` § log bridge.
 
-**Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes) — validated on **4.27.4**. **Skill-generated plugin `astrbot_version` default: `">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`) — metadata is a hard load gate matching skill contracts (H1-B, `astrbot.api.web`). Official **teaching** examples may still show `">=4.16,<5"` (ecosystem floor); do not copy that into skill scaffolds unless the plugin stays on the ancient surface only. Prefer **public API paths** (`astrbot.api.*`); official docs win on API semantics. After a **breaking** 4.28 adaptation that templates depend on, bump scaffold default to `">=4.28,<5"` and re-smoke.
+**Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes) — validated on production **4.27.4 and 4.28.1**. **Skill-generated plugin `astrbot_version` default: `">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`) — metadata is a hard load gate matching skill contracts (H1-B, `astrbot.api.web`); `version_check` supported on both 4.27.4 and 4.28.1. Official **teaching** examples may still show `">=4.16,<5"` (ecosystem floor); do not copy that into skill scaffolds unless the plugin stays on the ancient surface only. Prefer **public API paths** (`astrbot.api.*`); official docs win on API semantics. **4.28 UI**: Agent Runner config lives on each **profile** (not a standalone provider page); logs/conversations under **Data & Logs**. After a **breaking** core adaptation that templates depend on, bump scaffold default to `">=4.28,<5"` and re-smoke — **not required as of 4.28.1** (Star/filter/platform public surface unchanged vs skill contracts).
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
 
@@ -79,7 +80,7 @@ Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official d
 If MCP is configured:
 
 - **Docs tools (6)**: `get_skill_info`, `validate_import`, `get_review_checklist`, `search_docs`, `list_docs`, `get_doc`
-- **Runtime tools (24, `astrbot_*`)**: P0–P3 as before, plus P2+ **`scaffold_plugin`** (command|llm_tool|session|cron|hook|web|agent|adapter; contracts + review error=0) and **`review_path`** (profile=plugin|adapter), and P1 **`log_level_get/set`** (v4.27.0)
+- **Runtime tools (24, `astrbot_*`)**: P0–P3 as before, plus P2+ **`scaffold_plugin`** and **`review_path`**, P1 **`log_level_get/set`**, and **OpenAPI extras (degradable)**: `astrbot_openapi_capabilities`, `astrbot_plugin_install_url` / `install_git` / `plugin_update` / `plugin_changelog` / `validate_repo` — older cores return `openapi_unsupported` + fallback to **Scheme A `install_path`** (see `runtime/openapi_caps.py`)
 
 **Recommended loop**: `astrbot_scaffold_plugin` (or hand code after Step 0.5) → `astrbot_review_path` → `astrbot_plugin_install_path` → **user Dashboard** (enable / plugin_set / schema) → `astrbot_smoke_suite` (only after user confirms)
 

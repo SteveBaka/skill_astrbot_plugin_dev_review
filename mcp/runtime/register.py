@@ -35,6 +35,7 @@ _RUNTIME_SUBMODULES = {
     "tools_lifecycle",
     "tools_logs",
     "tools_manage",
+    "tools_openapi",
     "tools_profile",
     "tools_smoke",
     "tools_version",
@@ -281,10 +282,22 @@ def register_runtime_tools(mcp: Any) -> None:
         ZIP excludes match .gitignore (+ hard denylist) so contents align with
         GitHub/marketplace packages.
         Dev update loop: edit → install_path → (reload/failed included by default).
-        success=true does NOT guarantee on-disk code replaced (same version may be
-        stale). If components/behavior unchanged: bump metadata.version, or set
-        force_refresh=true (uninstall keep config+data → re-upload). Default never
-        auto-uninstall; may return warning possible_stale_install.
+
+        Install staleness contract (plan A+D + version evidence) — read install_status:
+        - install_ok_version_bumped: metadata.version changed after upload; component
+          fingerprint unchanged is NORMAL when commands/docstrings did not change.
+          Do NOT force_refresh solely for that; smoke only if handler internals must
+          be proven.
+        - pack_changed_components_same: same version/components but packed main.py hash
+          differs from last upload in this session — prefer smoke over force_refresh.
+        - possible_stale_install: same version AND identical component fingerprint.
+          stale_confidence=low|high (high only if pack hash matches previous upload).
+          LOW → smoke first; HIGH → bump metadata.version or force_refresh=true
+          (uninstall keep config+data → re-upload).
+        - install_ok: version/components moved in a useful way.
+
+        success=true does NOT by itself prove on-disk code replacement when version
+        is unchanged. Default never auto-uninstall.
         clear_failed=true: if the plugin exists only in the FAILED list (stale
         failed record blocking all mutations), DELETE .../plugins/failed/{id}
         (keep config+data) first, then upload. Opt-in; never auto-clears.
@@ -299,6 +312,84 @@ def register_runtime_tools(mcp: Any) -> None:
             force_refresh=force_refresh,
             clear_failed=clear_failed,
         )
+
+    # ── P2+ OpenAPI extras (degradable on older cores) ─────────
+
+    @mcp.tool()
+    def astrbot_openapi_capabilities(use_live: bool = True) -> str:
+        """
+        [RUNTIME P2+] Report which newer OpenAPI plugin features this AstrBot supports.
+
+        Uses live openapi.json / local snapshot + running core version. Features older
+        cores lack are marked unsupported with fallback tools. install_path remains
+        the portable Scheme A path. Read-only. use_live=false → snapshot+version only.
+        """
+        return _m("tools_openapi").astrbot_openapi_capabilities(use_live=use_live)
+
+    @mcp.tool()
+    def astrbot_plugin_install_url(
+        url: str,
+        enable: bool = True,
+        reload: bool = True,
+        confirm: bool = False,
+    ) -> str:
+        """
+        [RUNTIME P2+] Install from remote package URL (POST /plugins/install/url).
+
+        Newer-core OpenAPI capability. On cores without this endpoint the tool
+        DEGRADES (error_kind=openapi_unsupported|core_version_too_old) and points to
+        astrbot_plugin_install_path. Needs ASTRBOT_ALLOW_MUTATIONS + confirm=true.
+        """
+        return _m("tools_openapi").astrbot_plugin_install_url(
+            url=url, enable=enable, reload=reload, confirm=confirm
+        )
+
+    @mcp.tool()
+    def astrbot_plugin_install_git(
+        url: str,
+        ref: str = "",
+        enable: bool = True,
+        reload: bool = True,
+        confirm: bool = False,
+    ) -> str:
+        """
+        [RUNTIME P2+] Install from git remote (POST /plugins/install/git).
+
+        Degradable on older AstrBot — fallback guidance to install_path.
+        Needs ASTRBOT_ALLOW_MUTATIONS + confirm=true.
+        """
+        return _m("tools_openapi").astrbot_plugin_install_git(
+            url=url, ref=ref, enable=enable, reload=reload, confirm=confirm
+        )
+
+    @mcp.tool()
+    def astrbot_plugin_update(plugin_id: str, confirm: bool = False) -> str:
+        """
+        [RUNTIME P2+] Marketplace/source update (POST /plugins/{plugin_id}/update).
+
+        If the instance lacks the update API, returns a degraded payload directing
+        the agent to Scheme A install_path (bump version / force_refresh).
+        Needs ASTRBOT_ALLOW_MUTATIONS + confirm=true.
+        """
+        return _m("tools_openapi").astrbot_plugin_update(plugin_id=plugin_id, confirm=confirm)
+
+    @mcp.tool()
+    def astrbot_plugin_changelog(plugin_id: str = "") -> str:
+        """
+        [RUNTIME P2+] Read plugin changelog (per-plugin or market aggregate).
+
+        Degradable when changelog endpoints are missing — suggests README/releases.
+        """
+        return _m("tools_openapi").astrbot_plugin_changelog(plugin_id=plugin_id)
+
+    @mcp.tool()
+    def astrbot_plugin_validate_repo(repo: str) -> str:
+        """
+        [RUNTIME P2+] Validate plugin repository (POST /plugins/validate/repo).
+
+        Read-only. Degradable when unavailable on older cores.
+        """
+        return _m("tools_openapi").astrbot_plugin_validate_repo(repo=repo)
 
     # ── P2.5 plugin_dev_skill + privacy-safe hints ─────────────
 

@@ -25,3 +25,6 @@ plugin_data_path.mkdir(parents=True, exist_ok=True)
 - `StarTools.get_data_dir()` returns a `Path` object, not a string
 - Do not store large files in the plugin root directory
 - It is recommended to periodically clean up unused temporary files
+- **Attachments / media (AstrBot ≥4.28.1 #10042)**: core **preserves original image attachment paths after event cleanup** so agents can keep accessing attachments. Prefer `Image`/`Record`/`File` component resolution (`convert_to_file_path()`) or paths obtained during the event; still avoid assuming plugin-root temp dirs survive reinstall.
+- **Proactive media / adapter sends**: if the platform SDK needs a local path, use component `convert_to_file_path()` (official adapter guide) rather than hand-parsing `file://` prefixes.
+

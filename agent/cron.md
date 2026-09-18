@@ -35,6 +35,14 @@ await cron_mgr.add_basic_job(
 > timezone param needed — the cron expression is evaluated in the system/AstrBot
 > timezone.
 
+> **Agent steps (v4.28.0+ #9801)**: profile / system `max_agent_step` now applies to
+> **scheduled-task and background-task agents**, not only interactive tool loops.
+> Active cron jobs (`add_active_job`) can fail or stop earlier if the step budget is low.
+> Failures are recorded when the runner ends in an error state (#9987 on 4.28.1).
+
+> **Dashboard (v4.28+)**: Agent Runner settings are **embedded in each profile**, not a
+> standalone model-provider page. Logs / traces / conversations live under **Data & Logs**.
+
 ## Register AI Wake-up (Active Agent Job)
 
 ```python

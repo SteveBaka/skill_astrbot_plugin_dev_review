@@ -1,14 +1,15 @@
-"""Unit tests for install helpers: zip main hash, component fingerprint, stale detect."""
+"""Unit tests for install helpers: zip main hash, fingerprint, stale tiering."""
 
 from __future__ import annotations
 
 import io
-import json
 import zipfile
 
 from runtime.tools_install import (
+    _classify_install_staleness,
     _components_fingerprint,
     _components_look_unchanged,
+    _install_fingerprint_compare,
     _main_py_hash_from_zip,
 )
 
@@ -85,76 +86,97 @@ class TestComponentsFingerprint:
         )
 
 
-class TestStaleFailedDetection:
-    def test_stale_failed_detected(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
-        calls = []
+def _snap(version: str, command: str = "skillprobe", desc: str = "d") -> dict:
+    return {
+        "present": True,
+        "version": version,
+        "components_count": 1,
+        "components": _components_fingerprint(
+            [{"type": "command", "name": command, "command": command, "description": desc}]
+        ),
+    }
 
-        class FakeResp:
-            def __init__(self, ok=True, data=None, error=None, error_kind=None, status_code=200):
-                self.ok = ok
-                self.data = data
-                self.error = error
-                self.error_kind = error_kind
-                self.status_code = status_code
 
-            def to_dict(self):
-                return {
-                    "ok": self.ok,
-                    "status_code": self.status_code,
-                    "error": self.error,
-                    "error_kind": self.error_kind,
-                    "data": self.data,
-                }
+class TestInstallStalenessTiering:
+    """Plan A+D + version evidence (B): bump is not stale."""
 
-        class FakeClient:
-            def get(self, path, **kw):
-                calls.append(("get", path))
-                if path == "/api/v1/plugins/failed":
-                    return FakeResp(
-                        data={
-                            "status": "ok",
-                            "data": {
-                                "astrbot_plugin_x": {"name": "astrbot_plugin_x", "error": "boom"}
-                            },
-                        }
-                    )
-                if path.startswith("/api/v1/plugins/astrbot_plugin_x"):
-                    return FakeResp(data={"status": "ok", "data": {}})  # present=false
-                return FakeResp(data={"status": "ok", "data": {}})
+    def test_version_bump_same_components_not_stale(self):
+        """Repack case: v0.2.0 -> v0.2.1, identical command/docstrings."""
+        before = _snap("v0.2.0")
+        after = _snap("v0.2.1")
+        result = _classify_install_staleness(
+            before,
+            after,
+            refresh_mode="upload_only",
+            pack_main_py_sha256_16="e57afb1355a73893",
+            last_pack_main_py_sha256_16=None,
+        )
+        assert result["status"] == "install_ok_version_bumped"
+        assert result["possible_stale_install"] is False
+        assert result["stale_confidence"] == "none"
+        assert result["install_fingerprint"]["version_changed"] is True
+        assert result["install_fingerprint"]["version_before"] == "v0.2.0"
+        assert result["install_fingerprint"]["version_after"] == "v0.2.1"
+        assert "force_refresh" in result["stale_hint"].lower() or "Do NOT" in result["stale_hint"]
 
-            def delete(self, path, json_body=None, **kw):
-                calls.append(("delete", path, json_body))
-                return FakeResp(data={"status": "ok", "message": "ok"})
+    def test_version_and_components_changed_install_ok(self):
+        before = _snap("v0.2.0", "a")
+        after = _snap("v0.2.1", "b")
+        result = _classify_install_staleness(before, after, refresh_mode="upload_only")
+        assert result["status"] == "install_ok"
+        assert result["possible_stale_install"] is False
 
-            def post(self, path, json_body=None, **kw):
-                calls.append(("post", path))
-                return FakeResp(data={"status": "ok", "data": {"name": "astrbot_plugin_x"}})
+    def test_same_version_same_components_unknown_hash_low_stale(self):
+        snap = _snap("v0.2.1")
+        result = _classify_install_staleness(
+            snap,
+            dict(snap),
+            refresh_mode="upload_only",
+            pack_main_py_sha256_16="abc",
+            last_pack_main_py_sha256_16=None,
+        )
+        assert result["status"] == "possible_stale_install"
+        assert result["possible_stale_install"] is True
+        assert result["stale_confidence"] == "low"
 
-            def patch(self, path, json_body=None, **kw):
-                calls.append(("patch", path))
-                return FakeResp(data={"status": "ok", "data": {}})
+    def test_same_version_same_pack_hash_high_stale(self):
+        snap = _snap("v0.2.1")
+        result = _classify_install_staleness(
+            snap,
+            dict(snap),
+            refresh_mode="upload_only",
+            pack_main_py_sha256_16="deadbeefdeadbeef",
+            last_pack_main_py_sha256_16="deadbeefdeadbeef",
+        )
+        assert result["status"] == "possible_stale_install"
+        assert result["stale_confidence"] == "high"
 
-            def post_multipart(self, path, files=None, data=None, **kw):
-                calls.append(("upload",))
-                return FakeResp(data={"status": "ok", "data": {"name": "astrbot_plugin_x"}})
+    def test_same_version_pack_hash_changed_not_stale_warning(self):
+        snap = _snap("v0.2.1")
+        result = _classify_install_staleness(
+            snap,
+            dict(snap),
+            refresh_mode="upload_only",
+            pack_main_py_sha256_16="newhashnewhash12",
+            last_pack_main_py_sha256_16="oldhasholdhash12",
+        )
+        assert result["status"] == "pack_changed_components_same"
+        assert result["possible_stale_install"] is False
 
-        monkeypatch.setattr("runtime.tools_install.AstrBotClient", lambda cfg=None: FakeClient())
+    def test_force_refresh_same_version_not_stale_warning(self):
+        snap = _snap("v0.2.1")
+        result = _classify_install_staleness(
+            snap,
+            dict(snap),
+            refresh_mode="reinstall_keep_config_data",
+            pack_main_py_sha256_16="x",
+            last_pack_main_py_sha256_16=None,
+        )
+        assert result["status"] == "install_ok"
+        assert result["possible_stale_install"] is False
 
-        from runtime.tools_install import astrbot_plugin_install_path
-
-        root = tmp_path / "astrbot_plugin_x"
-        root.mkdir()
-        (root / "metadata.yaml").write_text("name: astrbot_plugin_x\nversion: 0.1.0\nauthor: t\n")
-        (root / "main.py").write_text("x = 1\n")
-
-        # without clear_failed: detects stale but doesn't delete
-        r = json.loads(astrbot_plugin_install_path(str(root)))
-        assert r["stale_failed"] and r["stale_failed"]["detected"] is True
-        assert not any(c[0] == "delete" for c in calls)
-
-        # with clear_failed: deletes failed record before upload
-        r2 = json.loads(astrbot_plugin_install_path(str(root), clear_failed=True))
-        dels = [c for c in calls if c[0] == "delete"]
-        assert dels and "plugins/failed" in dels[0][1]
-        assert r2["refresh_mode"] == "cleared_failed_then_upload"
+    def test_fingerprint_compare_fields(self):
+        fp = _install_fingerprint_compare(_snap("1.0.0"), _snap("1.0.1"))
+        assert fp["version_changed"] is True
+        assert fp["components_same"] is True
+        assert any("version" in n for n in fp["notes"])
