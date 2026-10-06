@@ -97,7 +97,7 @@ From official AstrBot dev principles (`star/plugin-new.md`):
 - Use [ruff](https://docs.astral.sh/ruff/) to format code before submission
 - All features must be tested before release
 - Include good comments
-- Store persistent data in `data/` directory, NOT in the plugin directory (prevents data loss on reinstall)
+- Store persistent data in `data/plugin_data/<plugin_name>/` via `StarTools.get_data_dir()`, NOT in the plugin directory and **NOT** as a bare file under the AstrBot data root (`get_astrbot_data_path() / "cache"` → marketplace LLM Guard reject, FIX-39)
 - Do NOT use `requests` for network requests — use `aiohttp` or `httpx` (async)
 - If extending another plugin's functionality, prefer submitting a PR to the original plugin rather than creating a new one
 - Implement robust error handling — don't let a single error crash the plugin

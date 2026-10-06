@@ -67,6 +67,9 @@ This file applies to all .py files **except** main.py, and to general code patte
 - [ ] `StarTools.get_data_dir()` is called from a `Star` subclass (not from Service/Manager classes)
 - [ ] No hardcoded file paths
 - [ ] Data path is `data/plugin_data/<plugin_name>/`
+- [ ] **No plugin-owned file written under the AstrBot data root** — `os.path.join(get_astrbot_data_path(), "cache")` / `get_astrbot_data_path() / "file"` is FIX-39 (marketplace LLM Guard reject)
+- [ ] `get_astrbot_data_path()` joins only `plugin_data/<plugin_name>/…` or read-only system dirs (`logs`, `metadata`, `plugins`, `config`)
+- [ ] Adapter caches / bot IDs / session state also live under `data/plugin_data/<plugin_name>/` (not data root)
 
 ### Namespace Safety
 

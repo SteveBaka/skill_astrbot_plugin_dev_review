@@ -108,6 +108,7 @@ Do **not** `git commit` / `git push` / force-push, or mass-rewrite working code,
 - Import table: `review/main-file-checklist.md` §1
 - Network: async (`aiohttp`/`httpx`)
 - `StarTools.get_data_dir()` from Star only
+- Persistent data under `data/plugin_data/<plugin_name>/` only — no data-root bare files (FIX-39 / LLM Guard)
 - Hooks: correct signatures; no yield
 - Tools: `add_llm_tools`; tool enable independent of plugin enable (≥4.26.x)
 - KV cleared on uninstall (≥4.26.2)
@@ -152,7 +153,7 @@ If clean:
 
 ## Fix & Re-audit
 
-1. Map issues to `review/auto-fix-guide.md` (FIX-00–29)
+1. Map issues to `review/auto-fix-guide.md` (FIX-00–39)
 2. Prefer minimal patches unless user approved large rewrite
 3. Re-run the **same phase** until PASS
 4. User audit request always ends with Phase B

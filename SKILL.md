@@ -256,7 +256,7 @@ review/review-workflow.md (orchestrator)
   │       - API deprecation checks
   │
    └── Fix & Re-audit
-      └── review/auto-fix-guide.md (FIX-00 ~ FIX-38; dedupe by symptom, no parallel conflicting fixes)
+      └── review/auto-fix-guide.md (FIX-00 ~ FIX-39; dedupe by symptom, no parallel conflicting fixes)
 ```
 
 ### Two-Phase Review
@@ -405,7 +405,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   3. Never commit tokens, full configs, or WebChat transcripts into the skill repo.
 - Use ruff to format before submission <!-- Source: plugin-new.md -->
 - Do NOT use `requests` for network requests — use `aiohttp` or `httpx` (async) <!-- Source: plugin-new.md -->
-- Store persistent data in `data/` directory (via `StarTools.get_data_dir()`), NOT in the plugin's own directory — prevents data loss on reinstall <!-- Source: plugin-new.md -->
+- Store persistent data in `data/plugin_data/<plugin_name>/` (via `StarTools.get_data_dir()`), NOT in the plugin's own directory and **NOT** as a bare file under the AstrBot data root — `os.path.join(get_astrbot_data_path(), "cache")` is FIX-39 and a marketplace **LLM Guard** reject (real case: flowbot adapter wxid cache). System dirs `logs/`/`metadata/`/`plugins/`/`config/` are read-only for plugins. <!-- Source: plugin-new.md + marketplace LLM Guard -->
 - `StarTools.get_data_dir()` MUST be called from a `Star` subclass (e.g., plugin `__init__`), NOT from Service/Manager classes — pass `data_dir` as parameter <!-- Source: real-world bug -->
 - If using sub-packages (handlers/, services/, etc.), add `sys.path.insert(0, os.path.dirname(__file__))` at top of main.py to avoid namespace collision with other plugins <!-- Source: real-world bug -->
 - Plugin naming: start with `astrbot_plugin_`, lowercase, no spaces, concise <!-- Source: plugin-new.md -->
@@ -418,7 +418,7 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - Plugin uninstall clears plugin KV storage (≥4.26.2) — do not assume KV survives uninstall <!-- Source: releases -->
 - `_conf_schema.json` may include UTF-8 BOM (≥4.26.7); still prefer UTF-8 without BOM for editors <!-- Source: releases -->
 - Dict-type fields in `_conf_schema.json`: core maps defaults correctly (≥4.26.8 #9414) — still use explicit schema defaults; do not rely on accidental `{}` sharing <!-- Source: v4.26.8 -->
-- Marketplace publish: use [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI market syncs from Cloud); package **ZIP ≤ 16MB**; include clean tree (no `.git` / `__pycache__` / venv) — aligns with MCP `zip_pack` excludes <!-- Source: plugin-publish.md / v4.26.8 -->
+- Marketplace publish: use [AstrBot Cloud](https://cloud.astrbot.app/publish) (WebUI market syncs from Cloud); package **ZIP ≤ 16MB**; include clean tree (no `.git` / `__pycache__` / venv) — aligns with MCP `zip_pack` excludes. **Before upload**, clear FIX-39 (persistent data under `plugin_data/<plugin_name>/` only) — Cloud automated security review (**LLM Guard**) rejects data-root writes even when malicious/suspicious counts are 0. <!-- Source: plugin-publish.md / v4.26.8 + marketplace LLM Guard -->
 - Per-plugin log level: Dashboard + plugin API `PUT /api/v1/plugins/{id}/log-level` with body `{"level": "DEBUG"|"INFO"|...|null}` (null = follow global); `log_level` also appears on plugin config GET (source ≥4.26.8 #9342; **in public OpenAPI since 4.27.0**; **re-verified on 4.28.1**) <!-- Source: v4.26.8 source / 4.27.0 spec / 4.28.1 runtime -->
 - Prefer official recommended Python **3.12** for development; skill minimum remains 3.10 for tooling <!-- Source: docs 4.26.2 -->
 
@@ -572,7 +572,7 @@ skill_astrbot_plugin_dev_review/
 │   ├── metadata-validation.md            # Structure validation
 │   ├── main-file-checklist.md            # main.py 10 checks + import table
 │   ├── general-file-checklist.md         # General code 5-dimension review
-│   └── auto-fix-guide.md                 # 39 fix patterns (FIX-00 ~ FIX-38)
+│   └── auto-fix-guide.md                 # 40 fix patterns (FIX-00 ~ FIX-39)
 │
 ├── plugin-types/                         # Plugin type examples
 │   ├── README.md                         # Type selection guide

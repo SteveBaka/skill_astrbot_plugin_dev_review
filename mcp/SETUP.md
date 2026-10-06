@@ -407,7 +407,7 @@ Confirm name/author first. Star: BUSINESS → review → install → **user Dash
 | Severity | Meaning | Examples |
 |----------|---------|----------|
 | error | breaks at import/load | FIX-00 wrong imports, FIX-04 sync requests, FIX-20 dataclass mutable defaults, FIX-21 unknown/non-existent filter attrs (`on_keyword` never existed), FIX-01 missing super().__init__, SYNTAX |
-| warning | mandatory-rule violation | FIX-02 command arg policy (untyped/free-text extras; typed structured = info), FIX-17 missing docstring, FIX-26 namespace, FIX-27 StarTools context, META-03/04 naming/PEP440, REQ-01 undeclared deps |
+| warning | mandatory-rule violation | FIX-02 command arg policy (untyped/free-text extras; typed structured = info), FIX-17 missing docstring, FIX-26 namespace, FIX-27 StarTools context, FIX-39 data-root persistent files (LLM Guard), META-03/04 naming/PEP440, REQ-01 undeclared deps |
 | info | hygiene | FIX-23 unused imports, FIX-22 config-injection hint |
 
 Recommended order: `astrbot_review_path` → fix errors → `astrbot_plugin_install_path` → `astrbot_smoke_suite`. Judgment-level review (architecture, logic) stays with the Phase A/B LLM workflow — this tool only automates the statically decidable subset.

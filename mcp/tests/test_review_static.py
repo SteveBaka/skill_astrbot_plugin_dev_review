@@ -174,6 +174,38 @@ class TestStructureRules:
         report = review_plugin_directory(_write_plugin(tmp_path, "def broken(\n"))
         assert "SYNTAX" in _rules(report, "error")
 
+    def test_fix39_data_root_join_flagged(self, tmp_path):
+        src = (
+            "import os\n"
+            "from astrbot.core.utils.astrbot_path import get_astrbot_data_path\n"
+            "path = os.path.join(get_astrbot_data_path(), 'flowbot_adapter_bot_wxid')\n"
+            "print(path)\n"
+        )
+        report = review_plugin_directory(_write_plugin(tmp_path, src))
+        assert "FIX-39" in _rules(report, "warning")
+
+    def test_fix39_pathlib_data_root_flagged(self, tmp_path):
+        src = (
+            "from astrbot.core.utils.astrbot_path import get_astrbot_data_path\n"
+            "path = get_astrbot_data_path() / 'bot_wxid_cache.json'\n"
+            "print(path)\n"
+        )
+        report = review_plugin_directory(_write_plugin(tmp_path, src))
+        assert "FIX-39" in _rules(report, "warning")
+
+    def test_fix39_plugin_data_and_logs_clean(self, tmp_path):
+        src = (
+            "import os\n"
+            "from astrbot.core.utils.astrbot_path import get_astrbot_data_path\n"
+            "p1 = os.path.join(get_astrbot_data_path(), 'plugin_data', 'astrbot_plugin_t', 'x')\n"
+            "p2 = get_astrbot_data_path() / 'plugin_data' / 'astrbot_plugin_t' / 'y'\n"
+            "p3 = os.path.join(get_astrbot_data_path(), 'logs', 'astrbot.log')\n"
+            "print(p1, p2, p3)\n"
+        )
+        report = review_plugin_directory(_write_plugin(tmp_path, src))
+        assert "FIX-39" not in _rules(report, "warning")
+        assert "FIX-39" not in _rules(report, "error")
+
 
 # ── metadata / requirements ────────────────────────────────────
 
@@ -486,3 +518,28 @@ class ColPlugin(Star):
     def test_prefixed_fields_clean(self, tmp_path):
         report = review_adapter_directory(self._adapter(tmp_path, ["xx_port", "xx_token"]))
         assert "FIX-32" not in [f.rule for f in report.findings]
+
+
+class TestFix39AdapterDataRoot:
+    def test_adapter_wxid_cache_on_data_root_flagged(self, tmp_path):
+        src = (
+            "import os\n"
+            "from astrbot.api.platform import Platform, PlatformMetadata, register_platform_adapter\n"
+            "from astrbot.api.star import Context, Star\n"
+            "from astrbot.core.utils.astrbot_path import get_astrbot_data_path\n"
+            "@register_platform_adapter('flow', 'Flow')\n"
+            "class FlowPlatform(Platform):\n"
+            "    def meta(self):\n"
+            "        return PlatformMetadata()\n"
+            "    def run(self):\n"
+            "        pass\n"
+            "    async def send_by_session(self, session_id, message, **kwargs):\n"
+            "        pass\n"
+            "    def cache_path(self):\n"
+            "        return os.path.join(get_astrbot_data_path(), 'flowbot_adapter_bot_wxid')\n"
+            "class FlowPlugin(Star):\n"
+            "    def __init__(self, context: Context):\n"
+            "        super().__init__(context)\n"
+        )
+        report = review_adapter_directory(_write_adapter(tmp_path, src))
+        assert "FIX-39" in [f.rule for f in report.findings]

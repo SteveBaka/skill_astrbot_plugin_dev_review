@@ -129,6 +129,20 @@ data_dir = StarTools.get_data_dir()  # Returns a Path object
 # Path: data/plugin_data/<plugin_name>/
 ```
 
+**Hard rule**: plugin-owned persistent files (caches, bot IDs, session state)
+stay under `data/plugin_data/<plugin_name>/`. Never write them as bare files
+under the AstrBot data root — that is FIX-39 and a marketplace LLM Guard reject.
+
+```python
+# ❌ WRONG
+os.path.join(get_astrbot_data_path(), "my_cache")
+
+# ✅ OK
+StarTools.get_data_dir() / "my_cache"
+# or (adapters / non-Star)
+get_astrbot_data_path() / "plugin_data" / plugin_name / "my_cache"
+```
+
 KV Storage (v4.9.2+):
 
 ```python

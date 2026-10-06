@@ -22,7 +22,7 @@ from astrbot.api.logger import logger
 from astrbot.api import logger
 ```
 
-本 Skill 内置 **31 条 import 校验表** 和 **39 个自动修复模式（FIX-00 ~ FIX-38）**，让 AI 生成代码时尽量杜绝以下常见问题：
+本 Skill 内置 **31 条 import 校验表** 和 **40 个自动修复模式（FIX-00 ~ FIX-39）**，让 AI 生成代码时尽量杜绝以下常见问题：
 
 - **不存在的 API**：`on_keyword`/`on_full_match`/`on_regex` 从未存在于 AstrBot（已对 tag 源码/全部 changelog/PR 核验），需改用 `event_message_type` + Python 匹配
 - **适配器配置冲突**：官方 `register_platform_adapter` 会自动注入 `id`/`enable`，`default_config_tmpl` 里不要重复声明，也不要放 `_conf_schema.json`
@@ -34,6 +34,7 @@ from astrbot.api import logger
 - **ToolExecResult 兼容性**：Python 3.12 下直接返回 `str` 即可
 - **未使用 import / 死代码**：LLM 常生成不需要的 import 和未使用的变量
 - **StarTools 调用限制**：`get_data_dir()` 必须在 `Star` 子类中调用
+- **持久化路径合规（FIX-39）**：插件自有缓存/ID/状态必须落在 `data/plugin_data/<plugin_name>/`，禁止 `get_astrbot_data_path()` 根下裸文件（市场 LLM Guard 会拒审，真实案例：flowbot 适配器 wxid 缓存）
 - **命名空间冲突**：`services/`、`handlers/` 等通用包名在多插件环境下会冲突
 - **插件与工具开关分离**（≥4.26.x）：插件启用 ≠ 每个 LLM Tool 启用
 - **卸载清 KV**（≥4.26.2）：卸载后插件 KV 会被清理
@@ -346,7 +347,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 配置隐私 | 禁止擅自读取插件/AstrBot 配置；装后仅提示前往 Dashboard；用户点名参数才可查；`config_get(redact=false)` 仅编辑时用 |
 | 插件与工具开关分离 | ≥4.26.x 插件启用 ≠ 每个 LLM Tool 启用 |
 | 卸载与 KV | ≥4.26.2 卸载会清理插件 KV |
-| 插件发布 | Cloud 市场 + ZIP ≤16MB；metadata 完整；打包排除与 MCP `zip_pack` 一致 |
+| 插件发布 | Cloud 市场 + ZIP ≤16MB；metadata 完整；打包排除与 MCP `zip_pack` 一致；**上架前清 FIX-39**（持久化路径），否则 LLM Guard 自动安全审查会拒 |
 | 配置 schema dict | ≥4.26.8 核心映射 dict 默认值；仍避免可变默认共享陷阱 |
 | 插件日志级别 | ≥4.27.0 可按插件设置 DEBUG/INFO/… 或跟随全局 |
 | docstring | 所有 `@filter.command` 必须有 docstring |
@@ -359,7 +360,7 @@ LLM 工具 + 钩子:   AI 调用工具 + 钩子注入上下文
 | 首次生成 | metadata/conf_schema/README 跟随用户语言；本地/首代 `repo` 可留空，上架市场前必须填有效 GitHub URL |
 | 代码清理 | 审核前移除未使用 import、死代码、重复定义 |
 | 网络库 | 必须用 `aiohttp`/`httpx`（异步），不能用 `requests` |
-| 数据存储 | 持久化数据存 `data/` 目录（`StarTools.get_data_dir()`），不存插件目录 |
+| 数据存储 | 持久化数据存 `data/plugin_data/<plugin_name>/`（`StarTools.get_data_dir()`），不存插件目录，**禁止**数据根目录裸文件（FIX-39） |
 | StarTools | `get_data_dir()` 必须在 `Star` 子类中调用，不能在 Service 类中直接调用 |
 | 命名空间 | 使用 `services/` 等通用包名时，main.py 顶部加 `sys.path.insert(0, os.path.dirname(__file__))` |
 | 插件命名 | `astrbot_plugin_` 前缀，小写，无空格 |
@@ -518,7 +519,7 @@ skill_astrbot_plugin_dev_review/
 │   ├── metadata-validation.md            # 结构校验（含 requirements.txt 交叉检查）
 │   ├── main-file-checklist.md            # main.py 检查（import 表由 contracts.py 维护）
 │   ├── general-file-checklist.md         # 通用代码审查
-│   └── auto-fix-guide.md                 # 39 个修复模式（FIX-00 ~ FIX-38）
+│   └── auto-fix-guide.md                 # 40 个修复模式（FIX-00 ~ FIX-39）
 │
 ├── plugin-types/                         # 插件类型示例（6 种 + script/ 基础模板）
 │   ├── README.md                         # 类型选择指南 + 决策树

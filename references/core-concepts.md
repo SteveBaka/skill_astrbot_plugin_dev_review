@@ -71,6 +71,7 @@ await self.delete_kv_data("key")
 # File Storage — StarTools.get_data_dir() returns a Path object
 from astrbot.api.star import StarTools
 data_dir = StarTools.get_data_dir()  # data/plugin_data/<plugin_name>/
+# Never write plugin caches as bare files under get_astrbot_data_path() (FIX-39)
 
 # HTML render to image
 img_url = await self.html_render(tmpl="<h1>{{ title }}</h1>", data={"title": "Hello"})

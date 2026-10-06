@@ -150,6 +150,7 @@ class MyPlatformEvent(AstrMessageEvent):
 - **Component fields**: check `astrbot/core/message/components.py` before accessing fields — `qq` is the canonical user-ID field (not `uid`); do not try to add custom fields to core components (pydantic BaseModel rejects unknown fields) (FIX-34)
 - **Cross-platform @ detection**: do not rely solely on XML `atuserlist` — different platforms encode @ mentions differently (XML structured, plaintext `@nickname`, etc.). Use platform-specific checks with fallback regex (FIX-36)
 - **Hot-reload limit**: `POST /plugins/{id}/reload` does NOT replace the running Platform instance; after changing adapter code, fully restart the AstrBot process (FIX-38)
+- **Persistent adapter data** (bot ID caches, wxid, session maps, tokens on disk): store under `data/plugin_data/<plugin_name>/` only — never as a bare file under the AstrBot data root (`get_astrbot_data_path() / "bot_wxid"`). Prefer `StarTools.get_data_dir()` from the dual-registration `Star` subclass, or `get_astrbot_data_path() / "plugin_data" / plugin_name / …`. Marketplace **LLM Guard** rejects data-root writes (FIX-39; real case: flowbot adapter wxid cache).
 
 ## Config: follow official `register_platform_adapter`
 

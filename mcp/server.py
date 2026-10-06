@@ -360,6 +360,7 @@ def get_review_checklist(file_type: str = "main") -> str:
 - [ ] `context.add_llm_tools()` used (NOT deprecated `register_llm_tool()`)
 - [ ] `terminate()` cleans up resources
 - [ ] `system_prompt += ...` only for stable settings; use `extra_user_content_parts` for dynamic
+- [ ] Persistent files via `StarTools.get_data_dir()` under `data/plugin_data/<plugin_name>/` (FIX-39 — not data root)
 
 ## Import Reference (most common mistakes)
 | Symbol | Correct | WRONG |
@@ -378,6 +379,7 @@ def get_review_checklist(file_type: str = "main") -> str:
 - [ ] `requirements.txt` has all third-party deps (no `astrbot`, no `quart`)
 - [ ] No `from astrbot.api.logger import logger` (must be `from astrbot.api import logger`)
 - [ ] No global variables for plugin state
+- [ ] Persistent data under `data/plugin_data/<plugin_name>/` only (FIX-39) — never bare files under `get_astrbot_data_path()`
 """,
         "metadata": """# metadata.yaml Validation
 
@@ -402,6 +404,10 @@ def get_review_checklist(file_type: str = "main") -> str:
 - [ ] `config_metadata` entries have `description`, `type`, `hint`
 - [ ] `secret: True` for API keys/tokens
 - [ ] `invisible: True` only for internal fields
+
+## Persistent Data (FIX-39)
+- [ ] Bot ID / wxid / session / token caches under `data/plugin_data/<plugin_name>/` only
+- [ ] No bare file under `get_astrbot_data_path()` (marketplace LLM Guard reject)
 """,
     }
     key = file_type.lower().strip()

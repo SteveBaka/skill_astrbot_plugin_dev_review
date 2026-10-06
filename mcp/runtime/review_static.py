@@ -37,9 +37,90 @@ from .contracts import (
     WRONG_IMPORT_MODULES,
 )
 
+# First path segment after get_astrbot_data_path() that is not a FIX-39 hit.
+# plugin_data = correct plugin root; others = core system dirs (read-only for plugins).
+_DATA_PATH_OK_ROOTS = frozenset(
+    {"plugin_data", "logs", "metadata", "plugins", "config", "temp"}
+)
+
 # Re-export names used by tests / external callers
 _STDLIB_HINT = STDLIB_TOP_LEVEL
 _ASTRBOT_BUNDLED = ASTRBOT_BUNDLED
+
+
+def _call_func_name(func: ast.AST) -> str:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return ""
+
+
+def _is_data_path_call(node: ast.AST) -> bool:
+    return isinstance(node, ast.Call) and _call_func_name(node.func) == "get_astrbot_data_path"
+
+
+def _const_str(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _first_path_segment(literal: str) -> str:
+    return literal.replace("\\", "/").split("/")[0]
+
+
+def scan_data_root_paths(rel: str, tree: ast.AST) -> list[Finding]:
+    """FIX-39: plugin-owned files joined under the AstrBot data root.
+
+    Detects os.path.join(get_astrbot_data_path(), "name") and
+    get_astrbot_data_path() / "name" when the first segment is not
+    plugin_data / a known system dir. Marketplace LLM Guard rejects these.
+    """
+    findings: list[Finding] = []
+    hint = (
+        "Store plugin persistent files under data/plugin_data/<plugin_name>/ "
+        "(StarTools.get_data_dir() or get_astrbot_data_path()/plugin_data/<name>/). "
+        "Data-root bare files fail marketplace LLM Guard (FIX-39)."
+    )
+
+    def flag(line: int, literal: str) -> None:
+        findings.append(
+            Finding(
+                "FIX-39",
+                "warning",
+                rel,
+                line,
+                f"`get_astrbot_data_path()` joined with `{literal}` — "
+                "plugin file would land on the AstrBot data root",
+                hint,
+            )
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            fname = _call_func_name(node.func)
+            if fname in ("join", "os.path.join") or (
+                isinstance(node.func, ast.Attribute) and node.func.attr == "join"
+            ):
+                args = list(node.args)
+                if args and _is_data_path_call(args[0]):
+                    for arg in args[1:]:
+                        lit = _const_str(arg)
+                        if lit is None:
+                            continue
+                        seg = _first_path_segment(lit)
+                        if seg and seg not in (".",) and seg not in _DATA_PATH_OK_ROOTS:
+                            flag(node.lineno, lit)
+                        break
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            if _is_data_path_call(node.left):
+                lit = _const_str(node.right)
+                if lit is not None:
+                    seg = _first_path_segment(lit)
+                    if seg and seg not in (".",) and seg not in _DATA_PATH_OK_ROOTS:
+                        flag(node.lineno, lit)
+    return findings
 
 
 @dataclass
@@ -455,6 +536,7 @@ class _FileChecker(ast.NodeVisitor):
         self.visit(self.tree)
         self.check_tool_exec_result()
         self.check_unused_imports()
+        self.findings.extend(scan_data_root_paths(self.rel, self.tree))
         return self
 
 
@@ -817,6 +899,7 @@ class _AdapterFileChecker(ast.NodeVisitor):
         self.visit(self.tree)
         # Per-file: Platform/register may live outside main.py (synochat pattern).
         self._scan_adapter_behavior()
+        self.findings.extend(scan_data_root_paths(self.rel, self.tree))
         return self
 
     def _scan_adapter_behavior(self) -> None:

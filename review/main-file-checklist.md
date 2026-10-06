@@ -58,6 +58,17 @@ Every AstrBot import path must be **exact**. LLMs frequently hallucinate plausib
 >
 > **Platform adapter + Web APIs**: prefer **public** `astrbot.api.platform` / `astrbot.api.web` paths (official guides). Core paths (`astrbot.core.platform.register`, Quart) still load but are implementation/legacy — keep public for next-core compatibility.
 
+### Data Path (FIX-39)
+
+Plugin-owned **persistent** files must live under `data/plugin_data/<plugin_name>/`:
+
+- [ ] Prefer `StarTools.get_data_dir()` from the `Star` subclass (FIX-27 if outside)
+- [ ] Manual: `get_astrbot_data_path() / "plugin_data" / plugin_name / …` only
+- [ ] **Never** `os.path.join(get_astrbot_data_path(), "cache_name")` or `get_astrbot_data_path() / "file"` — data-root bare files are a marketplace **LLM Guard** reject
+- [ ] System dirs (`logs`, `metadata`, `plugins`, `config`) are for core reads, not plugin caches
+
+See `review/auto-fix-guide.md` **FIX-39** and `storage_utils/file_storage.md`.
+
 ### Alternative Import Style (Also Valid)
 
 The real plugin `astrbot_plugin_synochat_adapter` uses this pattern in main.py:

@@ -900,6 +900,70 @@ to confirm the restart actually happened.
 
 ---
 
+### FIX-39: Persistent Data Written to AstrBot Data Root
+
+**Problem**: Plugin-owned cross-restart files (caches, bot IDs, session state,
+tokens on disk) are written under the **AstrBot data root** instead of the
+plugin data directory, e.g.:
+
+```python
+# ❌ WRONG — file lands at <data>/flowbot_adapter_bot_wxid
+os.path.join(get_astrbot_data_path(), "flowbot_adapter_bot_wxid")
+
+# ❌ WRONG — same violation via pathlib
+get_astrbot_data_path() / "bot_wxid_cache.json"
+```
+
+**Why it matters**: Marketplace automated security review (**LLM Guard**)
+treats this as a **data-persistence compliance** fail and rejects the package
+even when the rest of the security pass is clean (real case: `astrbot_plugin_flowbot_adapter`
+v1.4.3 — wxid cache at data root → Rejected). Root-level files also break
+user data migration/audit and reinstall isolation.
+
+**Path contract**:
+
+| Use | Path |
+|-----|------|
+| Plugin persistent files (cache, IDs, state) | `data/plugin_data/<plugin_name>/…` |
+| Preferred API | `StarTools.get_data_dir()` from a `Star` subclass (FIX-27) |
+| Manual construction (adapters / non-Star) | `get_astrbot_data_path() / "plugin_data" / plugin_name / …` |
+| System reads only (do not plant plugin files here) | `logs/`, `metadata/`, `plugins/`, `config/` |
+
+```python
+# ✅ FIX — Star plugin
+from astrbot.api.star import StarTools
+
+class MyPlugin(Star):
+    def __init__(self, context, config):
+        super().__init__(context)
+        self.data_dir = StarTools.get_data_dir()  # data/plugin_data/<plugin_name>/
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.wxid_cache = self.data_dir / "bot_wxid"
+
+# ✅ FIX — adapter / manual (still under plugin_data)
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
+
+def _plugin_data_dir(plugin_name: str):
+    p = get_astrbot_data_path() / "plugin_data" / plugin_name
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+cache = _plugin_data_dir("astrbot_plugin_flowbot_adapter") / "bot_wxid"
+```
+
+**Reviewer**: `astrbot_review_path` flags `FIX-39` (warning) when
+`get_astrbot_data_path()` is joined with a first path segment that is **not**
+`plugin_data` / a known system dir (`logs`, `metadata`, `plugins`, `config`).
+Manual assign-then-join (`root = get_astrbot_data_path(); … root / "x"`) is
+still Phase A/B checklist work — prefer `StarTools.get_data_dir()` so the
+pattern is obvious.
+
+**Pre-publish**: before Cloud marketplace upload, grep for
+`get_astrbot_data_path` and confirm every plugin-owned write stays under
+`plugin_data/<plugin_name>/`.
+
+---
+
 ## Verification
 
 After each fix, re-run the full audit from `review/review-workflow.md`:
