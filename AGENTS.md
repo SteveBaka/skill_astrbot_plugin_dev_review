@@ -14,11 +14,11 @@ This directory is a **complete skill system** for AstrBot plugin development wit
    - **Plugin uninstall**: ask keep config? keep data? Unanswered → **keep both**. Never delete config/data without explicit user OK (`mcp/runtime/tools_lifecycle.py`, `SKILL.md` Uninstall data safety)
    - **Local install/update**: Scheme A — `astrbot_plugin_install_path` (…); stale same-version → bump version or `force_refresh` keep config/data. See `SKILL.md` + `mcp/SETUP.md`
    - **Dashboard before smoke**: after new plugin or new `_conf_schema` / profile `plugin_set` / tool toggles — **remind user to configure in AstrBot Dashboard**, then smoke only after they confirm (or explicitly override)
-   - **WebChat test profile**: `plugin_dev_skill` … fixed session `mcp-smoke-<username>`; no auto-deletion / no system log tail
+   - **WebChat test profile**: `plugin_dev_skill` … fixed session `mcp-smoke-<owner>`. **Owner: prefer the operator's real (admin) Dashboard username** so sessions appear in their own WebChat and stay manually manageable — requires the key to hold the sensitive sub-scope `chat:admin` (else core rejects the admin id; probe reports `admin_username_needs_chat_admin`). A plain non-admin username needs no extra scope but leaves sessions invisible in their WebChat. **Closed cleanup loop** — `smoke_suite` auto-cleans by default (`auto_cleanup=true`), removing this run's session *and* draining older `mcp-smoke-*` leftovers for the owner; no system log tail
    - **chat_probe message**: always use the **plugin's own command**; `/plugin_help` to discover when unsure; never hardcode `/ttsinfo` (mimo_tts only)
    - **Staging → install (no hand-copy)**: `scaffold_plugin` output_dir is staging only (default `ASTRBOT_DEV_WORKSPACE` / `~/.astrbot_skill_workspace`, never cwd). Upload via `install_path`; installed path is always `<data>/plugins/<root_dir_name>/`. Never tell the user to copy files into `/AstrBot/<name>/`. Deliver full files (incl. `_conf_schema.json` when the plugin uses `config`) via `extra_files_json`, else `config_set` 400s "没有注册配置"
    - **Install failure order**: check `astrbot_plugin_failed` first. Plugin only in failed list + generic `插件操作失败` → **stale failed record** blocks all mutations — remove it with `astrbot_plugin_failed_remove(confirm=true)` (or `install_path(clear_failed=true)`), then re-upload. `force_refresh` does NOT clear failed-list-only entries. Adapter "未通过 Star 注册" → missing `Star` subclass (FIX-30, dual registration).
-   - **WebChat session cleanup**: webchat-only + confirms; API key cannot delete user sessions
+   - **WebChat session cleanup**: webchat-only + confirms; two endpoints with different gates — `DELETE /chat/sessions/{id}` is `creator`-gated (API key loses), `DELETE /conversations/{cid}` is `data`-scope without a creator check; only `mcp-smoke-*` ids ever reach the latter. Deletion needs mutations (auto-cleanup then reports `skipped=mutations_disabled`)
    - **Privacy**: do not auto-read plugin/AstrBot configs unless user names the keys; post-install = Dashboard hints only
    - After first code output: **Phase A** review (prefer `astrbot_review_path` + targeted FIX reads)
    - After feature-complete or user audit: **Phase B** full-tree review
@@ -36,7 +36,8 @@ This directory is a **complete skill system** for AstrBot plugin development wit
 | Fix issues | `review/auto-fix-guide.md` |
 | LLM tools | `agent/tools.md` |
 | Cron jobs | `agent/cron.md` |
-| WebUI pages | `webui/plugin-pages.md` |
+| **WebUI views (4.29+)** | `webui/plugin-views.md` |
+| WebUI pages (4.25.3–4.28.x) | `webui/plugin-pages.md` |
 | Platform adapter | `platform_adapters/adapter_interface.md` |
 
 ## Official AstrBot Docs (authority)
@@ -72,6 +73,17 @@ host and the plugin's `auth_token` (or AstrBot env `ASTRBOT_LOG_MCP_TOKEN`) to t
 value for bidirectional `X-MCP-Token` auth. Full setup: `mcp/SETUP.md` § log bridge.
 
 **Target core for current notes**: **≥4.27.0** (recommend; per-plugin log-level, failed-plugin cleanup API, API-key sub-scopes) — validated on production **4.27.4 and 4.28.1**. **Skill-generated plugin `astrbot_version` default: `">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`) — metadata is a hard load gate matching skill contracts (H1-B, `astrbot.api.web`); `version_check` supported on both 4.27.4 and 4.28.1. Official **teaching** examples may still show `">=4.16,<5"` (ecosystem floor); do not copy that into skill scaffolds unless the plugin stays on the ancient surface only. Prefer **public API paths** (`astrbot.api.*`); official docs win on API semantics. **4.28 UI**: Agent Runner config lives on each **profile** (not a standalone provider page); logs/conversations under **Data & Logs**. After a **breaking** core adaptation that templates depend on, bump scaffold default to `">=4.28,<5"` and re-smoke — **not required as of 4.28.1** (Star/filter/platform public surface unchanged vs skill contracts).
+
+**OpenAPI — what is `4.29+` only.** The local snapshot deliberately stays at the **4.28 baseline** so old cores + new skill keep working; the bookkeeping lives in `mcp/openapi_drift_baseline.json` (per-entry PR + old-core note) and `mcp/OPENAPI-SYNC.md`. Reference the table below before claiming an endpoint exists:
+
+| Area | `≤4.28.1` | **`4.29.0+`** |
+|------|-----------|----------------|
+| Plugin view endpoints | `/plugins/page(s)`, `/plugins/{id}/pages` | **`/plugins/view(s)`, `/plugins/{id}/views`, `/plugins/{id}/views/{view_name}`**; the page routes survive as **deprecated aliases** |
+| Page/view assets | `/plugins/page/assets`, `/plugins/{id}/pages/{name}/assets/{path}` | **removed** → path token `/views/<view>/_t/<token>/` (PR #10415) |
+| View asset serving | server rewrites HTML/CSS/JS URLs + `asset_token` query | **content served as-is**, token in path; legacy `?asset_token=` gone |
+| Chat file uploads | single-shot | **`/files/upload/{init,chunk,complete,abort,status}`** — scope `file`, **chat attachments only** (#10123) |
+| Plugin install | `POST /plugins/install/upload` = single `multipart/form-data` | **unchanged** — Scheme A `install_path` unaffected |
+| Runtime-used endpoints | 28 | **28, all present** → no MCP control-plane drift |
 
 Skill pitfall notes (`review/auto-fix-guide.md`) are **secondary** to official docs.
 

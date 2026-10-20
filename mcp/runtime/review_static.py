@@ -70,6 +70,63 @@ def _first_path_segment(literal: str) -> str:
     return literal.replace("\\", "/").split("/")[0]
 
 
+def scan_tool_schema_root(rel: str, tree: ast.AST) -> list[Finding]:
+    """FIX-40: an LLM tool whose parameters root type is not `object`.
+
+    `ToolSet.anthropic_schema()` raises
+    ``ValueError: Anthropic tool '<name>' input schema must have an object root.``
+    (AstrBot >=4.29.0, #10520). Before that it silently dropped every constraint
+    except properties/required, so the bug only shows up on new cores.
+    """
+    findings: list[Finding] = []
+    hint = (
+        'Declare tool parameters as {"type": "object", "properties": {...}}. '
+        "A non-object root (list/string/array) raises ValueError on Anthropic "
+        "providers since AstrBot 4.29.0 (FIX-40)."
+    )
+
+    def check_dict(node: ast.AST, lineno: int) -> None:
+        if not isinstance(node, ast.Dict):
+            return
+        root_type = None
+        seen_keys: set[str] = set()
+        for key, value in zip(node.keys, node.values, strict=False):
+            k = _const_str(key) if isinstance(key, ast.Constant) else None
+            if k is None:
+                continue
+            seen_keys.add(k)
+            if k == "type":
+                root_type = _const_str(value)
+        if root_type is not None and root_type != "object":
+            findings.append(
+                Finding(
+                    "FIX-40",
+                    "error",
+                    rel,
+                    lineno,
+                    f'tool parameters root `"type": "{root_type}"` — Anthropic requires '
+                    "an object root",
+                    hint,
+                )
+            )
+
+    for node in ast.walk(tree):
+        # FunctionTool(..., parameters={...}) / FunctionTool(parameters=TOOL_PARAMS)
+        if isinstance(node, ast.Call) and _call_func_name(node.func) == "FunctionTool":
+            for kw in node.keywords:
+                if kw.arg == "parameters" and isinstance(kw.value, ast.Dict):
+                    check_dict(kw.value, getattr(kw.value, "lineno", node.lineno))
+        # module-level TOOL_PARAMS = {...} used by add_llm_tools
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict):
+            targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+            if any("PARAM" in t.upper() or "SCHEMA" in t.upper() for t in targets):
+                d = node.value
+                keys = {_const_str(k) for k in d.keys if isinstance(k, ast.Constant)}
+                if "properties" in keys:  # looks like a tool param schema
+                    check_dict(d, getattr(d, "lineno", node.lineno))
+    return findings
+
+
 def scan_data_root_paths(rel: str, tree: ast.AST) -> list[Finding]:
     """FIX-39: plugin-owned files joined under the AstrBot data root.
 
@@ -537,6 +594,7 @@ class _FileChecker(ast.NodeVisitor):
         self.check_tool_exec_result()
         self.check_unused_imports()
         self.findings.extend(scan_data_root_paths(self.rel, self.tree))
+        self.findings.extend(scan_tool_schema_root(self.rel, self.tree))
         return self
 
 

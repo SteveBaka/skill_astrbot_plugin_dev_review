@@ -40,6 +40,22 @@ await cron_mgr.add_basic_job(
 > Active cron jobs (`add_active_job`) can fail or stop earlier if the step budget is low.
 > Failures are recorded when the runner ends in an error state (#9987 on 4.28.1).
 
+> **Plugin filtering in cron agents (v4.29.0+ #10163)**: the woke agent now honors the
+> session's `plugin_set`, so a cron job's **hooks and LLM tools** are filtered by the same
+> policy as an interactive turn. Source: `cron/manager.py` reads
+> `cfg.get("plugin_set", ["*"])` and sets `cron_event.plugins_name`
+> (`None` when the set is `["*"]`).
+>
+> | Session `plugin_set` | Plugins whose hooks/tools run |
+> |---|---|
+> | `["allowed"]` | `allowed` + reserved |
+> | `[]` | reserved only |
+> | `["*"]` / absent | everything |
+>
+> Consequence for plugins: on 4.29+ a plugin scheduled/managed by a profile that does not
+> include you in `plugin_set` will see its scheduled-task hooks go silent — this is not a
+> bug in your plugin. On 4.28.x the filter was not applied to cron agents.
+
 > **Dashboard (v4.28+)**: Agent Runner settings are **embedded in each profile**, not a
 > standalone model-provider page. Logs / traces / conversations live under **Data & Logs**.
 

@@ -278,7 +278,10 @@ def judge_case(
     summary = probe_result.get("summary") or {}
     errors = list(summary.get("errors") or [])
     plains = list(summary.get("plain_texts") or [])
+    reasoning = list(summary.get("reasoning") or [])
     has_content = bool(plains or summary.get("records") or summary.get("attachments"))
+    # Reasoning is not plugin output: a turn that only "thought" never ran the command.
+    reasoning_only = bool(reasoning) and not has_content
     platform_fail = _looks_like_platform_failure(plains)
     handler_fail = _looks_like_handler_failure(plains)
     chitchat = _looks_like_chitchat(plains)
@@ -292,6 +295,10 @@ def judge_case(
         verdict = "handler_error"
     elif require_markers and has_content and not marker_ok:
         errors = errors + ["content_markers_miss"]
+        verdict = "content_mismatch"
+    elif reasoning_only and kind in ("command", "command_group", "example", "custom"):
+        # The model reasoned about the command instead of the handler answering it.
+        errors = errors + ["llm_chitchat_not_plugin", "reasoning_only_no_plugin_output"]
         verdict = "content_mismatch"
     elif chitchat and kind in ("command", "command_group", "example", "custom"):
         # Slash/custom command answered as pure LLM chat → treat as miss for plugin smoke
@@ -343,6 +350,7 @@ def astrbot_smoke_suite(
     max_cases: int = DEFAULT_MAX_CASES,
     extra_messages: str = "",
     timeout_seconds: float = 0,
+    auto_cleanup: bool = True,
 ) -> str:
     """
     Full smoke pipeline: plugin status → failed diagnosis → derived cases → probes.
@@ -397,6 +405,7 @@ def astrbot_smoke_suite(
             if mine
             else "Install it first: astrbot_plugin_install_path(path)."
         )
+        _finish_smoke_cleanup(out, username, auto_cleanup)
         return _dumps(out)
 
     out["pipeline"]["plugin"] = {
@@ -409,16 +418,22 @@ def astrbot_smoke_suite(
         out["error_kind"] = "plugin_disabled"
         out["error"] = "Plugin is installed but not activated."
         out["next_step"] = "Enable it: astrbot_plugin_set_enabled(plugin_id, true)."
+        _finish_smoke_cleanup(out, username, auto_cleanup)
         return _dumps(out)
 
     # ── step 2: derive cases ───────────────────────────────────
+    # User-supplied cases are explicit intent, so they get quota first: deriving with
+    # the full budget and appending afterwards made `cases[:max_cases]` silently drop
+    # them whenever derived commands already filled the cap.
+    custom_msgs = [m.strip() for m in (extra_messages or "").split("||") if m.strip()]
+    borrowed = min(len(custom_msgs), max(max_cases - 1, 0))
     cases = build_smoke_cases(
         info.get("components") or [],
         include_admin=include_admin,
-        max_cases=max_cases,
+        max_cases=max(max_cases - borrowed, 1),
         plugin_id=pid,
     )
-    for i, msg in enumerate(m.strip() for m in (extra_messages or "").split("||") if m.strip()):
+    for i, msg in enumerate(custom_msgs):
         cases.append(
             {
                 "kind": "custom",
@@ -436,6 +451,7 @@ def astrbot_smoke_suite(
             "No smoke cases derivable (no non-admin commands/hooks/tools). "
             "Pass extra_messages or include_admin=true."
         )
+        _finish_smoke_cleanup(out, username, auto_cleanup)
         return _dumps(out)
     out["pipeline"]["cases_planned"] = [
         {
@@ -466,6 +482,8 @@ def astrbot_smoke_suite(
             out["error"] = probe.get("error")
             out["aborted_at_case"] = case["name"]
             out["results"] = results
+            # An aborted run is exactly when leftovers are most likely — still clean.
+            _finish_smoke_cleanup(out, username, auto_cleanup)
             return _dumps(out)
         entry: dict[str, Any] = {
             "case": case["name"],
@@ -581,4 +599,54 @@ def astrbot_smoke_suite(
             out["next_step"] = (
                 f"Investigate failing cases {fails}; for load crashes see pipeline.post_run_failed."
             )
+
+    # ── step 4: leave the environment clean ────────────────────
+    # All cases share ONE fixed smoke session, so cleanup runs once at the end —
+    # clearing per case would rebuild the session and break multi-turn context.
+    # This also drains leftovers from earlier crashed/interrupted runs, which makes
+    # repeated smoke cycles self-cleaning instead of slowly accumulating entries.
+    if auto_cleanup:
+        _finish_smoke_cleanup(out, username, auto_cleanup)
     return _dumps(out)
+
+
+def _finish_smoke_cleanup(out: dict[str, Any], username: str, enabled: bool) -> None:
+    """Drain smoke leftovers for this owner; attach the report to `out`.
+
+    Kept separate so every exit path of the pipeline (normal end, aborted case,
+    early failure) can call it without duplicating logic.
+
+    Gating: deleting is a mutation, so this respects the same `allow_mutations`
+    switch as every other write tool. Smoke probes themselves only send messages,
+    but a cleanup pass must never turn a read-only setup into a deleting one —
+    the report says why it was skipped rather than failing silently.
+    """
+    if not enabled:
+        return
+    from .config import load_config
+
+    cfg = load_config()
+    if not cfg.allow_mutations:
+        out["cleanup"] = {
+            "attempted": False,
+            "skipped": "mutations_disabled",
+            "hint": (
+                "Auto-cleanup deletes smoke leftovers, so it needs "
+                "ASTRBOT_ALLOW_MUTATIONS=true. Leftovers stay until then; run "
+                "astrbot_chat_sessions_cleanup once mutations are enabled."
+            ),
+        }
+        return
+
+    resolved_owner = (username or "").strip() or (
+        os.environ.get("ASTRBOT_CHAT_USERNAME") or ""
+    ).strip()
+    if not resolved_owner:
+        out["cleanup"] = {
+            "attempted": False,
+            "error": "username required to know which smoke sessions to clean",
+        }
+        return
+    from .tools_chat import cleanup_smoke_workspace
+
+    out["cleanup"] = cleanup_smoke_workspace(AstrBotClient(cfg), resolved_owner)

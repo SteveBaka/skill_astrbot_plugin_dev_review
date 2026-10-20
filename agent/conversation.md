@@ -118,3 +118,25 @@ async def add_dynamic_context(self, event, req):
     part.mark_as_temp()  # Not written to conversation history
     req.extra_user_content_parts.append(part)
 ```
+
+### Passing Temporary Context to a Standalone Agent (v4.29.0+ #10237)
+
+`Context.tool_loop_agent(...)` now accepts `extra_user_content_parts`, so a plugin that
+runs its own agent loop (not an `on_llm_request` hook) can inject per-turn context the
+same way instead of mutating a system prompt:
+
+```python
+from astrbot.core.agent.message import TextPart
+
+part = TextPart(text="<context>仅本轮有效</context>")
+part.mark_as_temp()
+yield event.request_llm(
+    prompt=query,
+    contexts=contexts,
+    extra_user_content_parts=[part],   # forwarded through Context.tool_loop_agent
+)
+```
+
+Use this for data that must **not** be persisted into conversation history. Anything that
+is stable across turns still belongs in the system prompt — mixing them defeats prompt
+caching.

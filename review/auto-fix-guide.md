@@ -964,6 +964,44 @@ pattern is obvious.
 
 ---
 
+### FIX-40: LLM Tool Schema Root Is Not `object`
+
+**Problem**: an LLM tool declares `parameters` whose root `type` is not `object`:
+
+```python
+TOOL_PARAMS = {"type": "array", "properties": {...}}   # ❌
+```
+
+**AstrBot ≥4.29.0 (#10520)** raises at request time:
+
+```
+ValueError: Anthropic tool '<name>' input schema must have an object root.
+```
+
+On 4.28.x the same schema was silently degraded — `anthropic_schema()` copied only
+`properties` and `required`, dropping `$ref`, `oneOf`, ranges and every other constraint —
+so the bug is invisible until the plugin meets an Anthropic provider on a new core.
+
+**Fix**:
+
+```python
+TOOL_PARAMS = {
+    "type": "object",                      # ✅ required root
+    "properties": {"query": {"type": "string"}},
+    "required": ["query"],
+}
+```
+
+Omitting `type` is also fine (it defaults to `object`); an explicit non-object root is not.
+
+**Reviewer**: `astrbot_review_path` flags `FIX-40` (**error**) for a `FunctionTool(parameters=...)`
+literal or a module-level `*PARAMS*` / `*SCHEMA*` dict that carries `properties` together with
+a non-object root.
+
+**Also check**: tool **names must be unique** — `openai_schema()` sorts by name for prompt
+cache stability, so a duplicate silently shadows another tool, and a same-named custom
+server tool overrides a registered one (#10437).
+
 ## Verification
 
 After each fix, re-run the full audit from `review/review-workflow.md`:

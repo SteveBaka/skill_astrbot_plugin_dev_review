@@ -1,6 +1,23 @@
-# Plugin Dashboard Pages
+# Plugin Dashboard Pages (AstrBot 4.25.3 – 4.28.x)
+
+> ## ⚠️ Version scope — read before using this file
+>
+> | Core version | Use |
+> |---|---|
+> | **`4.25.3 – 4.28.x`** | **this file** (Pages surface: `pages/`, `window.AstrBotPluginPage`) |
+> | **`>=4.29`** | [`plugin-views.md`](./plugin-views.md) — Pages were renamed to **Views** (`views/`, `window.AstrBotPluginView`) |
+>
+> Sections marked `[version-independent]` are accurate on **both** ranges and are mirrored
+> in `plugin-views.md`; keep them in sync when editing.
+>
+> Renamed in **4.29.0** by PR #10307 (`4b049d1e`), with path-token assets + the finished
+> rename in PR #10415 (`8831d950`). Everything listed here is still **accepted** on 4.29
+> as a deprecated alias — but new plugins should target `plugin-views.md`.
+> Migration: [§11](#11-migration-to-views-429).
 
 > **Primary reference**: https://docs.astrbot.app/dev/star/guides/plugin-pages.html
+> (the URL is unchanged, but since 4.29.0 its **content** is "Plugin Views" — for 4.28-era
+> wording this file is the accurate one, not that page.)
 
 AstrBot supports plugins exposing Dashboard pages through the `pages/` directory. AstrBot scans `pages/<page_name>/index.html`; directories without `index.html` are ignored.
 
@@ -14,15 +31,23 @@ AstrBot supports plugins exposing Dashboard pages through the `pages/` directory
 ```text
 my_plugin/
 ├── main.py
-└── pages/
-    └── studio/
-        ├── index.html      # Entry point
-        ├── app.js          # Vue SPA (router + components + API client)
-        ├── style.css       # Styles
-        └── _page.json      # Page metadata (i18n)
+├── metadata.yaml
+├── pages/
+│   └── studio/
+│       ├── index.html      # Entry point
+│       ├── app.js          # Vue SPA (router + components + API client)
+│       └── style.css       # Styles
+└── .astrbot-plugin/
+    └── i18n/
+        ├── zh-CN.json      # Page title/description + strings (key prefix: pages.<page_name>)
+        └── en-US.json
 ```
 
-## Recommended Tech Stack
+> **No `_page.json`.** Page/View metadata is **not** declared in a per-directory JSON file —
+> it lives in `.astrbot-plugin/i18n/<locale>.json` under the `pages.<page_name>` key
+> (see § Page Internationalization). Exceptions: `metadata.yaml` only.
+
+## Recommended Tech Stack `[version-independent]`
 
 | Approach | Use Case |
 |----------|----------|
@@ -33,6 +58,11 @@ my_plugin/
 Vue 3 CDN: `vue.global.prod.js` (~33KB gzip) + `vue-router.global.prod.js`, runs directly in browser.
 
 ## Bridge SDK (window.AstrBotPluginPage)
+
+> **4.25.3 – 4.28.x**: the global is `window.AstrBotPluginPage`.
+> **4.29+**: canonical name is `window.AstrBotPluginView`; `AstrBotPluginPage` stays as an
+> alias. For a plugin that must run on both, see [§11](#11-migration-to-views-429).
+> See [`plugin-views.md`](./plugin-views.md) for the 4.29 surface.
 
 AstrBot automatically inserts the bridge SDK into the iframe. **No manual import needed.**
 
@@ -259,7 +289,14 @@ function icon(name) {
 | File suffix | Whitelist: `suffix not in (".mp3", ".wav")` |
 | Error messages | Never expose internal paths, return `str(e)` only |
 
-## Static Resources
+## Static Resources — 4.28 and below only
+
+> **This whole section is 4.28-specific and does NOT describe 4.29+.**
+> 4.29 replaced server-side rewriting with a **path token**
+> (`/api/v1/plugins/<plugin>/views/<view>/_t/<token>/`) and **removed** the legacy
+> `/api/plugin/page/content/...?asset_token=...` route (PR #10415).
+> The one rule that survives both versions: **use plain relative paths**
+> (`./style.css`, `./assets/logo.svg`) and never hardcode an asset URL or `asset_token`.
 
 AstrBot automatically rewrites relative paths and appends `asset_token`. Use relative paths (`./style.css`, `./assets/logo.svg`). Do NOT manually concatenate `/api/plugin/page/content/...`.
 
@@ -270,7 +307,7 @@ AstrBot rewrites:
 
 SPA should use hash routing (history routing needs real files at each path).
 
-## Security Constraints
+## Security Constraints `[version-independent]`
 
 Plugin Pages run in a sandboxed iframe:
 
@@ -324,19 +361,18 @@ window.addEventListener("beforeunload", () => {
 1. Modify `pages/` files → refresh page (no plugin reload needed)
 2. Modify `main.py` API → reload plugin
 3. Add/delete Page directories → reload plugin
+4. Edit `.astrbot-plugin/i18n/<locale>.json` → **reload plugin** (metadata is read at load time)
 
-## Page Internationalization
+## Page Internationalization `[version-independent]`
 
-`_page.json` in page directory defines the page title and description shown in WebUI:
+> **Corrected 2026-10-16.** Earlier revisions of this file documented a per-directory
+> `_page.json` with `{"title": {"i18n_key": ...}}`. **That file does not exist in
+> AstrBot** — `git log --all -S "_page.json"` across `docs/` and `astrbot/` returns
+> nothing, and the official guide has always pointed at
+> `.astrbot-plugin/i18n/<locale>.json`. Do not create `_page.json`.
 
-```json
-{
-  "title": { "i18n_key": "pages.studio.title" },
-  "description": { "i18n_key": "pages.studio.desc" }
-}
-```
-
-The `i18n_key` values map to entries in `.astrbot-plugin/i18n/<locale>.json`. The `title` is used as the WebUI shell title and the page component name in the plugin detail page. The `description` is used as the page component description.
+Declare page metadata in `.astrbot-plugin/i18n/<locale>.json`, under the
+`pages.<page_name>` key (`<page_name>` must match the directory name):
 
 ```json
 {
@@ -351,6 +387,16 @@ The `i18n_key` values map to entries in `.astrbot-plugin/i18n/<locale>.json`. Th
 }
 ```
 
+`title` becomes the WebUI shell title and the page component name on the plugin detail
+page; `description` becomes the component description. Other keys are free-form page
+strings read via `bridge.t()`.
+
+- Prefer the older `pages.<page_name>` key when the plugin must also run on `>=4.29`
+  (4.29 reads it as an alias of `views.<view_name>`, so one key serves both).
+- **Reload the plugin after editing locale files** so the WebUI receives new metadata.
+- `4.29+` only: if the current locale has no `title`, the ungrouped sidebar falls back to
+  the plugin name and grouped mode to the View directory name.
+
 Use `bridge.t()` in page scripts and `bridge.onContext()` to respond to language switches:
 
 ```js
@@ -363,3 +409,41 @@ await bridge.ready();
 render();
 bridge.onContext(render);  // Re-render on language switch
 ```
+
+## 11. Migration to Views (4.29+)
+
+Maps every surface this file documents onto its 4.29 counterpart. Alias column = still
+accepted on 4.29, but deprecated; prefer the canonical column for new work.
+
+| Do now (works on **both**) | 4.29 canonical | Notes |
+|---|---|---|
+| keep `pages/<page_name>/index.html` | `views/<view_name>/index.html` | `pages/` is accepted on 4.29; if both exist, `views/` wins |
+| `window.AstrBotPluginView ?? window.AstrBotPluginPage` | `window.AstrBotPluginView` | dual-read makes one build work on both |
+| i18n key `pages.<page_name>` | `views.<view_name>` | 4.29 reads `pages` as an alias → `pages` key alone is dual-compatible |
+| `metadata.yaml` without a views field | `views:` list (`pages:` alias) | optional; only needed if you declare views explicitly |
+| **relative** asset paths (`./app.js`) | same | 4.28 rewrites them; 4.29 resolves them under the `_t/<token>/` prefix |
+| read `context.pageName` | `context.pageName` | field name kept for wire compatibility on 4.29 |
+
+**Do NOT do** (breaks on 4.29):
+
+- hardcode `/api/plugin/page/content/...` or append `asset_token` yourself — the route was
+  removed (PR #10415);
+- depend on server-side HTML/CSS/JS URL rewriting — gone in 4.29;
+- create `_page.json` — never existed;
+- call `/(pages)/{id}/assets/...` — those endpoints were removed.
+
+**Recommended dual-version plugin** — one build, 4.28 and 4.29:
+
+```text
+my_plugin/
+├─ pages/studio/index.html      # 4.28 reads it; 4.29 reads it as an alias
+├─ views/studio/index.html      # optional: 4.29 prefers it if present
+├─ .astrbot-plugin/i18n/zh-CN.json   # key: "pages": { "studio": {...} }
+└─ metadata.yaml
+```
+
+```js
+const bridge = window.AstrBotPluginView ?? window.AstrBotPluginPage;
+```
+
+Full 4.29 surface: [`plugin-views.md`](./plugin-views.md).

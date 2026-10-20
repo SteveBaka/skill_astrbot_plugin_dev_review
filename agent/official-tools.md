@@ -6,8 +6,21 @@ Built-in tool list for AstrBot Core.
 
 ## Web Search (provider-dependent)
 
-- Web search tools are injected when a web-search provider is enabled on the profile (e.g. Tavily, **AnySearch** on ≥4.28).
-- **4.28.1 (#9979)** fixed field loss / swallowed error codes / parameter validation in web-search tools — if your plugin wraps search results, expect stricter arg validation on new cores.
+- Web search tools are injected when a web-search provider is enabled on the profile.
+  Providers selectable on `≥4.29.1`: **SerpApi**, DeepSeek Search API, Tavily,
+  Baidu AI Search, Bocha, Brave, Firecrawl, Exa, AnySearch
+  (`websearch_provider` in `CONFIG_METADATA_3`; #9767 added AnySearch in 4.28,
+  #10599 SerpApi + DeepSeek in 4.29.1).
+- **4.28.1 (#9979)** fixed field loss / swallowed error codes / parameter validation in
+  web-search tools — if your plugin wraps search results, expect stricter arg
+  validation on new cores.
+- Provider-specific extras: SerpApi adds Google web / image / scholar / finance search
+  (#10601); DeepSeek adds web search + page-content extraction (#10599). Tool names and
+  availability remain **profile-dependent** — never hardcode a provider's tool name;
+  discover at runtime.
+- Config keys follow the provider (`websearch_<provider>_key`, list-valued for
+  round-robin, `secret: true`). A plugin that ships its own search wrapper should keep
+  its own key under its own namespace rather than reusing `websearch_*`.
 
 ## Computer Use
 

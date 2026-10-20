@@ -17,6 +17,7 @@ Design notes for later debugging:
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -91,6 +92,48 @@ def _classify_httpx_error(exc: BaseException) -> tuple[str, str]:
     if isinstance(exc, httpx.HTTPError):
         return ("http_client", f"HTTP client error: {type(exc).__name__}: {exc!s}")
     return ("unknown", f"{type(exc).__name__}: {exc!s}")
+
+
+def _stream_with_deadline(
+    client: httpx.Client,
+    method: str,
+    url: str,
+    params: Mapping[str, Any] | None,
+    json_body: Any,
+    max_total_seconds: float,
+) -> tuple[httpx.Response, bool]:
+    """Read a streaming response under a hard wall-clock cap.
+
+    httpx's `timeout` is per-operation, so a server that keeps an event stream open
+    (or trickles keep-alives) never trips it and the sync read blocks forever — which
+    hangs the WHOLE MCP server, since tools run in one process. Chat SSE does exactly
+    that. Accumulate with a deadline instead, then build a complete Response from what
+    arrived so downstream parsing is unchanged.
+    """
+    deadline = time.monotonic() + max(0.0, max_total_seconds)
+    chunks: list[bytes] = []
+    headers: dict[str, str] = {}
+    status = 0
+    truncated = False
+
+    with client.stream(method, url, params=params, json=json_body) as resp:
+        status = resp.status_code
+        headers = {k: v for k, v in resp.headers.items()}
+        for chunk in resp.iter_bytes():
+            chunks.append(chunk)
+            if time.monotonic() >= deadline:
+                truncated = True
+                break
+
+    return (
+        httpx.Response(
+            status,
+            headers=headers,
+            content=b"".join(chunks),
+            request=httpx.Request(method, url),
+        ),
+        truncated,
+    )
 
 
 class AstrBotClient:
@@ -180,12 +223,14 @@ class AstrBotClient:
         params: Mapping[str, Any] | None = None,
         json_body: Any = None,
         timeout: float | None = None,
+        max_total_seconds: float | None = None,
     ) -> ApiResult:
         if not self.cfg.enabled:
             return self._not_configured()
 
         url = self._url(path)
         t = timeout if timeout is not None else self.cfg.timeout
+        truncated = False
 
         try:
             with httpx.Client(
@@ -193,7 +238,12 @@ class AstrBotClient:
                 headers=_build_headers(self.cfg),
                 follow_redirects=True,
             ) as client:
-                resp = client.request(method.upper(), url, params=params, json=json_body)
+                if max_total_seconds is None:
+                    resp = client.request(method.upper(), url, params=params, json=json_body)
+                else:
+                    resp, truncated = _stream_with_deadline(
+                        client, method.upper(), url, params, json_body, max_total_seconds
+                    )
         except Exception as exc:  # noqa: BLE001 — always return structured error to agent
             kind, msg = _classify_httpx_error(exc)
             return ApiResult(
@@ -206,7 +256,23 @@ class AstrBotClient:
                 elapsed_ms=None,
             )
 
-        return self._from_response(resp)
+        result = self._from_response(resp)
+        if truncated:
+            # Surface it instead of pretending the body was complete: callers parsing
+            # an event stream would otherwise read a silently short response.
+            return ApiResult(
+                ok=result.ok,
+                status_code=result.status_code,
+                data=result.data,
+                error=(
+                    f"{result.error} | " if result.error else ""
+                )
+                + f"stream truncated at max_total_seconds={max_total_seconds}",
+                error_kind=result.error_kind or "stream_truncated",
+                url=result.url,
+                elapsed_ms=result.elapsed_ms,
+            )
+        return result
 
     def post_multipart(
         self,

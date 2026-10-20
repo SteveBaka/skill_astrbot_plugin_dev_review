@@ -46,7 +46,7 @@ See `design_standards/context_usage.md`
 
 - `context.send_message(umo, chain)` / `context.get_platform_inst(platform_id)` (v4.0.0+)
 - `context.add_llm_tools(*tools)` (see `agent/tools.md`)
-- `context.register_web_api(path, handler, methods, desc)` (see `webui/plugin-pages.md`)
+- `context.register_web_api(path, handler, methods, desc)` (see `webui/plugin-views.md` for ≥4.29, `webui/plugin-pages.md` for ≤4.28)
 
 ### LLM API (v4.5.7+)
 

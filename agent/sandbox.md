@@ -2,6 +2,32 @@
 
 Sandbox provides an isolated execution environment for code and shell commands.
 
+## Detecting the Runtime (v4.29.0+ #9472)
+
+`GET /api/v1/stats/version` now returns a `runtime` snapshot alongside the version, so a
+plugin can adapt **before** calling a tool instead of failing at execution time:
+
+```json
+{"runtime": {
+  "os": "darwin",            // platform.system().lower()
+  "arch": "arm64",           // platform.machine(), unmodified
+  "sandbox": {
+    "backend": "seatbelt",   // bubblewrap | seatbelt | null
+    "status": "detected",    // detected | missing | unavailable | unsupported
+    "error": "..."           // only when status == unavailable
+  }
+}}
+```
+
+`status` semantics: `detected` = executable found and a minimal workspace sandbox launched;
+`missing` = executable not found; `unavailable` = found but startup failed; `unsupported` =
+this platform has no Local process sandbox backend (`backend: null`).
+
+**Values are captured once at application startup** — after installing sandbox
+dependencies the operator must restart AstrBot to refresh them. Do not cache across
+restarts, and do not treat this as a live probe (it does not verify DNS or every
+permitted operation).
+
 ## Access in Plugin
 
 ```python

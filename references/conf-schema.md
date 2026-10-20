@@ -11,11 +11,16 @@ AstrBot uses schemas for automatic configuration parsing and WebUI visualization
 | `hint` | string | Hover tooltip |
 | `obvious_hint` | bool | Whether to display prominently |
 | `default` | any | Default value |
-| `options` | list | Dropdown options |
+| `options` | list | Dropdown options — the **stored values** (do not translate these) |
+| `labels` | list | Display text aligned with `options` by index; stored values unchanged |
+| `subtitles` | list | Short descriptions under each dropdown label, aligned with `options` by index. Empty string or omit trailing entries for options without one. **Single-select and multi-select dropdowns only** — plain checkboxes ignore it |
+| `slider` | dict | `int` / `float` only: `{"min": 1, "max": 100, "step": 1}` renders a slider instead of a number box |
 | `invisible` | bool | Whether hidden |
 | `secret` | bool | **Mask in Dashboard** for `string` / string `list` (API keys, tokens, passwords). UI-only mask — value stays plaintext in config file. Plugins must not log/echo secrets. **AstrBot ≥4.28 (#9824)** also masks sensitive profile fields by default. |
 
-> **≥4.28 notes for plugin authors**: official `plugin-config.md` (v4.28.1) still documents `secret`, `file`, `dict` (`template_schema`), `template_list` (`display_item` / `hide_hint_in_list`). Internal `_special` values such as `select_agent_runner_provider:*` / `select_plugin_set` may change — **do not use** in third-party plugins. `dict` user-defined content is preserved on config save (#9958).
+> **≥4.29.1 notes for plugin authors**: `labels`, `subtitles`, and `slider` are documented schema fields. `labels`/`subtitles` follow the WebUI language when translated in `.astrbot-plugin/i18n/<locale>.json` (official `plugin-config.md` + `plugin-i18n.md` at 4.29.1; `slider` documented by #10289). `options` are stored values — translate `labels`, never `options`. `subtitles`/`labels` fall back to the schema value when a locale lacks them. All three are additive: older cores ignore the keys.
+>
+> **≥4.28 notes for plugin authors**: official `plugin-config.md` (v4.28.1) documents `secret`, `file`, `dict` (`template_schema`), `template_list` (`display_item` / `hide_hint_in_list`). Internal `_special` values such as `select_agent_runner_provider:*` / `select_plugin_set` may change — **do not use** in third-party plugins. `dict` user-defined content is preserved on config save (#9958).
 
 
 ## Type Examples

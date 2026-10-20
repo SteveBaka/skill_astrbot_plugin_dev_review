@@ -22,7 +22,7 @@ from astrbot.api.logger import logger
 from astrbot.api import logger
 ```
 
-本 Skill 内置 **31 条 import 校验表** 和 **40 个自动修复模式（FIX-00 ~ FIX-39）**，让 AI 生成代码时尽量杜绝以下常见问题：
+本 Skill 内置 **31 条 import 校验表** 和 **41 个自动修复模式（FIX-00 ~ FIX-40）**，让 AI 生成代码时尽量杜绝以下常见问题：
 
 - **不存在的 API**：`on_keyword`/`on_full_match`/`on_regex` 从未存在于 AstrBot（已对 tag 源码/全部 changelog/PR 核验），需改用 `event_message_type` + Python 匹配
 - **适配器配置冲突**：官方 `register_platform_adapter` 会自动注入 `id`/`enable`，`default_config_tmpl` 里不要重复声明，也不要放 `_conf_schema.json`
@@ -52,6 +52,18 @@ from astrbot.api import logger
 > 2. **新版（≥4.27.0）**：按 Skill 当前规则与示例写即可。
 > 3. **用户核心较旧**：确认后**收窄 API 使用**并写入相匹配的 `astrbot_version`，或升级核心；**不要**在 skill 新契约插件上假装 `">=4.16"` 可载入。4.28 适配完成且模板依赖 4.28-only API 后，再把脚手架默认升到 `">=4.28,<5"`。
 > 4. 版本不确定时，先问，不要默认假设新版。
+>
+> ### 4.29 变化速查（模型据此区分版本，勿凭印象）
+>
+> | 领域 | 4.28 及以下 | **4.29+** |
+> |---|---|---|
+> | 插件页面入口 | `pages/` + `window.AstrBotPluginPage` | **`views/` + `window.AstrBotPluginView`**（`pages/`、`AstrBotPluginPage` 仍是别名） |
+> | 视图元数据 i18n 键 | `pages.<page_name>` | **`views.<view_name>`**（`pages` 为别名，两者互通） |
+> | 视图静态资源 | 服务端重写 URL + `asset_token` 查询 | **路径令牌 `/api/v1/plugins/<id>/views/<view>/_t/<token>/`**；旧 `/api/plugin/page/content/...?asset_token=` **已移除** |
+> | OpenAPI 路径数 | 163（本 skill 快照基线） | **170**：+4 条 views 端点、+5 条 chat 分块上传；−2 条 page 资源端点 |
+> | 插件安装 | `plugins/install/upload` 单次 multipart | **不变**（分块上传只用于聊天附件，与安装无关） |
+>
+> 依据：`webui/plugin-views.md`（4.29+ 主文档）、`webui/plugin-pages.md`（≤4.28 + 迁移表）、`mcp/openapi_drift_baseline.json`（逐条 PR 与旧核心说明）。**`_page.json` 从未存在过**，别生成它。
 
 ---
 
@@ -212,9 +224,10 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `ASTRBOT_HTTP_TIMEOUT` | `15` | 请求超时（秒）；上传/对话可能更高 |
 | `ASTRBOT_ALLOW_MUTATIONS` | `false` | 插件写操作与建开发档案总开关 |
 | `ASTRBOT_ALLOW_CHAT_PROBE` | `false` | 放宽 chat_probe 门禁（仍推荐 `confirm_probe=true`） |
-| `ASTRBOT_CHAT_USERNAME` | 空 | chat_probe 默认 username |
+| `ASTRBOT_CHAT_USERNAME` | 空 | smoke 会话 owner。**推荐填你自己的 Dashboard（管理员）用户名**——会话会出现在你自己的 WebChat 里，可随时手动管理；但需 key 带 `chat:admin` 敏感子作用域。也可填普通非管理员用户名（无需额外 scope，但会话在你的列表里不可见），或 `api_key:<key_id>`（会话行可被 key 自删） |
 | `ASTRBOT_CHAT_CONFIG_NAME` | `plugin_dev_skill` | chat_probe 默认配置档案名 |
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | `mcp-smoke-<username>` | smoke 固定会话 id（所有 probe 复用同一条，Dashboard 可管理） |
+| `ASTRBOT_CHAT_SMOKE_DEADLINE` | `25` | 单次 chat probe 总时限（秒）；默认压在典型 MCP 客户端窗口内，`0` 取消该上限 |
 | `ASTRBOT_ERROR_KB` | 空 | 错误指纹库路径（gitignored）；install/smoke 失败自动记录脱敏指纹，反哺 auto-fix-guide |
 | `ASTRBOT_DEV_WORKSPACE` | `~/.astrbot_skill_workspace` | scaffold 暂存目录（绝不用 cwd，避免容器内落到 /AstrBot/<name>/） |
 | `ASTRBOT_LOG_MCP_URL` | 空 | **启用**日志桥接（可选）；未设置 ⇒ 日志工具不注册、不调用 |
@@ -232,19 +245,29 @@ cd mcp && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | P2+ | **契约脚手架**：8 类型 + adapter 框架，error=0 不变量 | `scaffold_plugin` | 纯本地，无需 AstrBot |
 | P2+ | **AST 静态审查器**：FIX 规则代码化，发现项直链 auto-fix-guide | `review_path`（profile=plugin\|adapter） | 纯本地，无需 AstrBot |
 | P2.5 | 开发档案 `plugin_dev_skill`、装后 Dashboard 提示 | `ensure_plugin_dev_skill` / `providers_brief` / `post_install_hints` | 建档需 MUTATIONS；**不私自读配置全文** |
-| P3 | WebChat 会话列表、可选 smoke、webchat 会话清理 | `chat_sessions_brief` / `chat_probe` / `chat_sessions_cleanup` | Token 含 **chat**；probe 需用户允许；固定会话 `mcp-smoke-<username>` |
-| P3+ | **smoke 复合套件**：状态 → 按组件生成用例 → 逐条 probe → 崩溃复查 → 聚合判定 | `smoke_suite` | 同 chat_probe 门禁；admin 指令默认跳过 |
+| P3 | WebChat 会话列表、可选 smoke、webchat 会话清理 | `chat_sessions_brief` / `chat_probe` / `chat_sessions_cleanup` | Token 含 **chat**（清理走 `data`）；probe 需用户允许；固定会话 `mcp-smoke-<owner>` |
+| P3+ | **smoke 复合套件**：状态 → 按组件生成用例 → 逐条 probe → 崩溃复查 → 聚合判定 → **自动清理**（默认开） | `smoke_suite` | 同 chat_probe 门禁；admin 指令默认跳过；清理需 MUTATIONS |
 | P1（可选） | **日志桥接（MCP→插件）**：读取 AstrBot 运行日志 | `logs_history` / `logs_tail` / `logs_search` | 需装 `astrbot_plugin_mcp_logs_bridge` + `ASTRBOT_LOG_MCP_URL`；未设置不注册不调用 |
 
 ### WebChat 会话策略（P3 设计说明）
 
-经源码级验证（AstrBot `chat_service.py`）：删除会话时校验 `session.creator == 认证身份`，而 API Key 的身份是 `api_key:<key_id>`——**API Key 永远无法删除 Dashboard 用户创建的会话**。因此本 MCP 采用固定会话方案：
+经源码级验证，AstrBot 对两类资源的门禁**不同**：
 
-- 所有 smoke 测试复用**同一条**会话 `mcp-smoke-<username>`，列表恒定一条、不再累积
-- 该会话归属用户本人，Dashboard WebChat 中可随时查看/删除（删除后下次 probe 自动重建）
-- `chat_sessions_cleanup` 仅能删 webchat 平台会话（其他平台一律拒绝，隐私硬边界），且仅对 API Key 自建会话有效
-- **不要**为绕过此限制给 API Key 加 system 权限——权限最小化优先
-- **`chat_probe` 的 message 用插件自己的命令**：不确定时先发 `/plugin_help` 探测，再按其真实指令测试；**不要**硬编码其它插件的命令（如 `/ttsinfo` 仅 mimo_tts 使用）
+| 接口 | scope | 门禁 |
+|---|---|---|
+| `DELETE /api/v1/chat/sessions/{id}` | `chat` | `creator == 认证身份`（API Key 身份是 `api_key:<key_id>`，故**删不掉** Dashboard 用户的会话） |
+| `GET/DELETE /api/v1/conversations/{cid}` | `data` | **无 creator 校验**，`user_id` 由调用方提供 |
+
+因此「会话行删不掉」与「用户可见对话能删」可以同时成立。本 MCP 据此设计：
+
+- 所有 smoke 复用**同一条**会话 `mcp-smoke-<owner>`，不再累积
+- **自动清理（默认开启）**：`smoke_suite(auto_cleanup=true)` 在跑完后——**包括中途失败、提前返回、插件未启用等所有出口**——清理本次会话，**并顺带排空该 owner 遗留的旧 `mcp-smoke-*`**（崩溃/中断留下的痕迹）。于是反复 smoke 是**自净的闭环**，而不是缓慢堆积
+- 删除分三步：先试 `chat/sessions/{id}`；被拒则 `GET /conversations` 查出真实 `cid`，再 `DELETE /conversations/{cid}`；**最后重新列表复验**（该接口对不存在的 cid 也返回 200，不复验会误报成功）
+- **删除属写操作**，需 `ASTRBOT_ALLOW_MUTATIONS=true`；未开启时报告 `cleanup.skipped=mutations_disabled` 并给出提示，**不影响 smoke 判定结果**——只读环境不会因为探测而突然开始删东西
+- **硬边界**：只有 `mcp-smoke-*` 会话会进入 `data` scope 删除；真实用户对话永不触碰
+- `auto_cleanup=false` 可保留会话以便手工排查
+- **不要**为绕过限制给 API Key 加 system 权限——权限最小化优先
+- **`chat_probe` 的 message 用插件自己的命令**：不确定时先用 `/plugin_help` 探测，再按其真实指令测试；**不要**硬编码其它插件的命令（如 `/ttsinfo` 仅 mimo_tts 使用）
 
 ### 日志桥接（可选）—— 读取 AstrBot 运行日志
 
@@ -417,12 +440,16 @@ cd mcp && .venv/bin/pytest tests/
 ### OpenAPI 契约漂移检测
 
 ```bash
-python3 mcp/scripts/check_openapi_drift.py            # 常规检测
-python3 mcp/scripts/check_openapi_drift.py --update   # 刷新本地快照
-python3 mcp/scripts/check_openapi_drift.py --offline  # 离线校验 runtime ↔ 快照
+# 需要 Python >= 3.10，请用项目 venv 解释器（裸 python3 若是 3.9 会直接报错）
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py               # 常规检测
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --update      # 刷新本地快照
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --offline     # 离线校验 runtime ↔ 快照
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --no-baseline # 忽略已接受基线，看原始差异
 ```
 
-数据源为官方 [`docs.astrbot.app/openapi.json`](https://docs.astrbot.app/scalar.html)（ETag 增量检测，未变化时 304 秒回）。脚本自动扫描 `mcp/runtime/` 中实际使用的 18 条端点，退出码：`0` 无漂移 / `1` **runtime 所用端点受影响**（先修 runtime 再信任工具）/ `2` 漂移但不涉及 runtime。**每次 AstrBot 发新版后建议跑一次**。
+数据源为官方 [`docs.astrbot.app/openapi.json`](https://docs.astrbot.app/scalar.html)（ETag 增量检测，未变化时 304 秒回）。脚本自动扫描 `mcp/runtime/` 中实际使用的 28 条端点，退出码：`0` 无**新增**漂移 / `1` **runtime 所用端点受影响**（先修 runtime 再信任工具）/ `2` 漂移但不涉及 runtime / `3` 快照缺失、抓取失败或解释器版本不符。**每次 AstrBot 发新版后建议跑一次**。
+
+为兼容"旧版 AstrBot + 新版 skill"，本地快照刻意停留在较旧的基线，因此对 live 会长期存在同一批差异。已知差异登记在 [`mcp/openapi_drift_baseline.json`](mcp/openapi_drift_baseline.json)（逐条带 PR 引用与旧核心说明），脚本按基线过滤后**只报新增**；基线中已不再出现的条目会提示为 STALE 以便 `--update` 后清理。
 
 ### 错误指纹回测 → 反哺 auto-fix-guide
 
@@ -505,7 +532,8 @@ skill_astrbot_plugin_dev_review/
 │   └── plugin-i18n.md                    # 插件国际化
 │
 ├── webui/                                # WebUI
-│   └── plugin-pages.md                   # Dashboard 页面 + Bridge API + SSE + 安全约束
+│   ├── plugin-views.md                   # 可视化视图 views/ — AstrBot >=4.29（主）
+│   └── plugin-pages.md                   # 页面 pages/ — 4.25.3~4.28.x（含迁移表）
 │
 ├── references/                           # 参考文档
 │   ├── core-concepts.md                  # 核心 API 清单

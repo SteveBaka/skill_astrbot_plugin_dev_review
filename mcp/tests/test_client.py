@@ -121,3 +121,69 @@ class TestEncodePluginId:
         assert encode_plugin_id("a/b c") == "a%2Fb%20c"
         assert encode_plugin_id("  x  ") == "x"
         assert encode_plugin_id("") == ""
+
+
+# ── overall stream deadline (chat SSE must never block the MCP process) ─────
+
+
+def test_stream_with_deadline_caps_an_endless_stream():
+    """An SSE body that keeps flowing must stop at the wall-clock cap."""
+    import time as _time
+
+    from runtime.client import _stream_with_deadline
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        def gen():
+            for _ in range(100_000):  # would run ~forever without a deadline
+                yield b'data: {"x": 1}\n\n'
+                _time.sleep(0.005)
+
+        return httpx.Response(
+            200, content=gen(), headers={"content-type": "text/event-stream"}
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        t0 = _time.monotonic()
+        resp, truncated = _stream_with_deadline(c, "POST", "http://t/x", None, None, 0.1)
+        elapsed = _time.monotonic() - t0
+
+    assert truncated is True
+    assert resp.status_code == 200
+    assert b"data:" in resp.content
+    assert elapsed < 5, f"deadline not enforced ({elapsed:.1f}s)"
+
+
+def test_request_reports_truncation_as_stream_truncated(monkeypatch):
+    """request(max_total_seconds=...) surfaces truncation instead of a silent short body."""
+    import time as _time
+
+    import runtime.client as rc
+
+    monkeypatch.setenv("ASTRBOT_BASE_URL", "http://astrbot.test:6185")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        def gen():
+            for _ in range(100_000):
+                yield b'data: {"x": 1}\n\n'
+                _time.sleep(0.005)
+
+        return httpx.Response(
+            200, content=gen(), headers={"content-type": "text/event-stream"}
+        )
+
+    real_client_cls = httpx.Client
+    monkeypatch.setattr(
+        rc.httpx,
+        "Client",
+        lambda **kw: real_client_cls(
+            transport=httpx.MockTransport(handler),
+            **{k: v for k, v in kw.items() if k != "transport"},
+        ),
+    )
+
+    res = AstrBotClient().request(
+        "POST", "/api/v1/chat", json_body={}, timeout=1, max_total_seconds=0.1
+    )
+    assert res.status_code == 200
+    assert "stream truncated" in (res.error or "")
+    assert res.error_kind == "stream_truncated"

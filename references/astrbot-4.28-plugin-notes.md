@@ -6,6 +6,16 @@ Authoritative target for **skill-generated plugins** remains `astrbot_version: "
 This file records **4.28.0–4.28.1** facts that plugin authors and this skill’s MCP
 tooling must respect. Official docs/source win on conflict.
 
+> **4.29.x delta lives elsewhere.** This file stays scoped to 4.28 so older-core readers
+> get accurate 4.28 behaviour. For the 4.29 line use `webui/plugin-views.md`
+> (Pages→Views), `references/conf-schema.md` (`labels`/`subtitles`), and
+> `agent/register-skill.md` (skills fault isolation).
+>
+> **4.29.0 → 4.29.1 (`dffe922`, PR #10602): no OpenAPI change** — `openspec/` and the
+> scopes doc are untouched, so the 163-path snapshot and its baseline stay valid. The
+> release is plugin-surface neutral on the REST side; its only plugin-facing additions
+> are schema metadata (`subtitles`) and skills fault isolation.
+
 ## OpenAPI extras + graceful degradation (skill MCP)
 
 | Tool | Endpoint | Older core behavior |
@@ -116,9 +126,9 @@ Raise the floor **after** codegen actually requires 4.28-only behavior + re-smok
 # version gate against live core
 astrbot_version_check(spec=">=4.27,<5", include_probe_version=true)
 
-# OpenAPI drift (ETag 304 = no change)
-python3 mcp/scripts/check_openapi_drift.py
-python3 mcp/scripts/check_openapi_drift.py --update   # refresh snapshot when needed
+# OpenAPI drift (ETag 304 = no change; needs Python >= 3.10 → use the venv interpreter)
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py
+./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --update   # refresh snapshot when needed
 
 # log relay (needs ASTRBOT_LOG_MCP_URL on MCP host)
 astrbot_logs_tail(lines=20)

@@ -5,7 +5,10 @@
 .env
 .env.*
 .venv/
-AstrBot OpenAPI v1.json
+# "AstrBot OpenAPI v1.json" is TRACKED on purpose — it is the pinned 4.28-era
+# baseline that mcp/openapi_drift_baseline.json is written against, so that
+# "older core + newer skill" stays a supported combination for every clone.
+# Refresh deliberately with `check_openapi_drift.py --update`, then prune the baseline.
 __pycache__/
 plugin-types/REVIEW-REPORTS.md
 # Local validation / smoke reports (not part of the skill package)

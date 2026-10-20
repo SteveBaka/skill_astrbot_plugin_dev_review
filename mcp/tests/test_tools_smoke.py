@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from runtime.tools_smoke import (
     astrbot_smoke_suite,
     build_smoke_cases,
@@ -215,7 +216,7 @@ class TestNoContentAll:
                     }
                 )
 
-        monkeypatch.setattr("runtime.tools_smoke.AstrBotClient", lambda: _FakeClient())
+        monkeypatch.setattr("runtime.tools_smoke.AstrBotClient", lambda *a, **k: _FakeClient())
 
         def fake_probe(message, **kw):
             # empty SSE: ok but zero output (no plain, no error event)
@@ -236,3 +237,211 @@ class TestNoContentAll:
         assert r["summary"]["no_content"] >= 1
         assert "provider" in r["next_step"].lower()
         assert "NOT an API-key" in r["next_step"]
+
+
+# ── auto-cleanup (self-cleaning smoke cycles) ──────────────────
+
+
+class TestSmokeAutoCleanup:
+    """A smoke run must leave no leftovers; deletion still respects mutations."""
+
+    def test_cleanup_skipped_when_mutations_disabled(self, monkeypatch):
+        from runtime import tools_smoke
+
+        monkeypatch.delenv("ASTRBOT_ALLOW_MUTATIONS", raising=False)
+        out: dict = {}
+        tools_smoke._finish_smoke_cleanup(out, "someone", True)
+        assert out["cleanup"]["attempted"] is False
+        assert out["cleanup"]["skipped"] == "mutations_disabled"
+        # the hint must tell the operator how to enable it
+        assert "ASTRBOT_ALLOW_MUTATIONS" in out["cleanup"]["hint"]
+
+    def test_cleanup_can_be_disabled_per_call(self, monkeypatch):
+        from runtime import tools_smoke
+
+        monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
+        out: dict = {}
+        tools_smoke._finish_smoke_cleanup(out, "someone", False)
+        assert "cleanup" not in out
+
+    def test_cleanup_requires_an_owner(self, monkeypatch):
+        from runtime import tools_smoke
+
+        monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
+        monkeypatch.delenv("ASTRBOT_CHAT_USERNAME", raising=False)
+        out: dict = {}
+        tools_smoke._finish_smoke_cleanup(out, "", True)
+        assert out["cleanup"]["attempted"] is False
+        assert "username" in out["cleanup"]["error"]
+
+    def test_owner_resolved_from_env(self, monkeypatch):
+        """Env fallback keeps automation working without passing username each time."""
+        from runtime import tools_smoke
+
+        monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "true")
+        monkeypatch.setenv("ASTRBOT_CHAT_USERNAME", "env-owner")
+        captured = {}
+
+        def fake_cleanup(client, owner, **kw):
+            captured["owner"] = owner
+            return {"attempted": True, "cleaned": True, "targets": []}
+
+        monkeypatch.setattr("runtime.tools_chat.cleanup_smoke_workspace", fake_cleanup)
+        out: dict = {}
+        tools_smoke._finish_smoke_cleanup(out, "", True)
+        assert captured["owner"] == "env-owner"
+        assert out["cleanup"]["cleaned"] is True
+
+
+class TestWorkspaceCleanup:
+    """cleanup_smoke_workspace drains both current and stale smoke artifacts."""
+
+    @pytest.fixture
+    def env(self, monkeypatch):
+        monkeypatch.setenv("ASTRBOT_BASE_URL", "http://astrbot.test:6185")
+
+    def test_discovers_stale_and_current(self, env, monkeypatch):
+        import httpx
+        from runtime.client import AstrBotClient
+        from runtime.config import load_config
+        from runtime.tools_chat import cleanup_smoke_workspace
+
+        capture: list = []
+
+        def handler(request: httpx.Request):
+            capture.append((request.method, request.url.path))
+            if request.method == "GET" and request.url.path == "/api/v1/chat/sessions":
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "data": {
+                            "sessions": [
+                                {"session_id": "mcp-smoke-a", "platform_id": "webchat"},
+                                {"session_id": "mcp-smoke-stale", "platform_id": "webchat"},
+                                {"session_id": "chat-123", "platform_id": "webchat"},
+                            ]
+                        },
+                    },
+                )
+            if request.url.path == "/api/v1/conversations":
+                return httpx.Response(
+                    200,
+                    json={"status": "ok", "data": {"conversations": [], "pagination": {"page": 1, "total_pages": 1}}},
+                )
+            return httpx.Response(200, json={"status": "error", "message": "Permission denied"})
+
+        client = AstrBotClient(load_config())
+
+        def patched(method, path, *, params=None, json_body=None, timeout=None,
+                    max_total_seconds=None):
+            transport = httpx.MockTransport(handler)
+            with httpx.Client(transport=transport) as hc:
+                resp = hc.request(method.upper(), client._url(path), params=params, json=json_body)
+            return client._from_response(resp)
+
+        client.request = patched  # type: ignore[method-assign]
+        rep = cleanup_smoke_workspace(client, "owner-x", extra_session_ids=["mcp-smoke-a"])
+
+        # both the fresh session and the stale one are targets; real chat is not
+        assert "mcp-smoke-a" in rep["targets"]
+        assert "mcp-smoke-stale" in rep["targets"]
+        assert "chat-123" not in rep["targets"]
+        assert rep["stale_discovered"] == ["mcp-smoke-stale"]
+
+    def test_no_leftovers_is_clean(self, env, monkeypatch):
+        import httpx
+        from runtime.client import AstrBotClient
+        from runtime.config import load_config
+        from runtime.tools_chat import cleanup_smoke_workspace
+
+        client = AstrBotClient(load_config())
+
+        def patched(method, path, *, params=None, json_body=None, timeout=None,
+                    max_total_seconds=None):
+            def handler(request):
+                if request.url.path == "/api/v1/chat/sessions":
+                    return httpx.Response(200, json={"status": "ok", "data": {"sessions": []}})
+                return httpx.Response(200, json={"status": "ok", "data": {"conversations": [], "pagination": {"page": 1, "total_pages": 1}}})
+
+            transport = httpx.MockTransport(handler)
+            with httpx.Client(transport=transport) as hc:
+                resp = hc.request(method.upper(), client._url(path), params=params, json=json_body)
+            return client._from_response(resp)
+
+        client.request = patched  # type: ignore[method-assign]
+        rep = cleanup_smoke_workspace(client, "owner-x")
+        assert rep["attempted"] is False
+        assert rep["cleaned"] is True
+        assert "No smoke leftovers" in rep["note"]
+
+
+class TestExtraMessagesQuota:
+    """User-supplied cases must survive max_cases truncation."""
+
+    def _run(self, monkeypatch, *, extra: str, max_cases: int):
+        from runtime import tools_smoke
+
+        class _Fake:
+            def request(self, *a, **k):
+                class R:
+                    ok = True
+                    status_code = 200
+                    data = {
+                        "data": {
+                            "components": [
+                                {"type": "command", "name": n, "command": n, "has_admin": False}
+                                for n in ("a", "b", "c", "d", "e")
+                            ],
+                            "activated": True,
+                            "name": "astrbot_plugin_t",
+                            "version": "1.0",
+                        }
+                    }
+                    error = None
+                    error_kind = None
+                    url = ""
+                    elapsed_ms = 1.0
+
+                return R()
+
+            def get(self, *a, **k):
+                return self.request()
+
+        monkeypatch.setattr("runtime.tools_smoke.AstrBotClient", lambda *a, **k: _Fake())
+        monkeypatch.setenv("ASTRBOT_ALLOW_CHAT_PROBE", "true")
+        monkeypatch.setenv("ASTRBOT_ALLOW_MUTATIONS", "false")
+
+        def fake_probe(message, **kw):
+            return json.dumps(
+                {
+                    "ok": True,
+                    "summary": {"plain_texts": ["ok"], "errors": [], "records": [], "attachments": []},
+                }
+            )
+
+        monkeypatch.setattr("runtime.tools_smoke.astrbot_chat_probe", fake_probe)
+        raw = tools_smoke.astrbot_smoke_suite(
+            "astrbot_plugin_t",
+            confirm=True,
+            username="u",
+            max_cases=max_cases,
+            extra_messages=extra,
+            auto_cleanup=False,
+        )
+        return json.loads(raw)
+
+    def test_custom_case_is_not_dropped(self, monkeypatch):
+        r = self._run(monkeypatch, extra="自定义用例", max_cases=4)
+        planned = r["pipeline"]["cases_planned"]
+        assert len(planned) == 4
+        kinds = [c["kind"] for c in planned]
+        assert "custom" in kinds, f"custom case dropped: {kinds}"
+        assert planned[-1]["message"] == "自定义用例"
+
+    def test_multiple_custom_cases_keep_quota(self, monkeypatch):
+        r = self._run(monkeypatch, extra="one||two", max_cases=3)
+        planned = r["pipeline"]["cases_planned"]
+        customs = [c for c in planned if c["kind"] == "custom"]
+        assert len(customs) == 2, planned
+        assert len(planned) == 3

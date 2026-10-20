@@ -17,7 +17,7 @@ description: |
 metadata:
   short-description: AstrBot plugin dev + auto review
   version: "2.0"
-  compatibility: astrbot — **skill-generated plugins: `>=4.27,<5`** (contracts smoke-tested on production **4.27.4 and 4.28.1**: H1-B, public `astrbot.api.web`, notes ≥4.27). Official **teaching** examples may still show `>=4.16,<5` (ecosystem floor). Raise scaffold default to `>=4.28,<5` only when templates truly depend on 4.28-only APIs (not required as of 4.28.1 validation).
+  compatibility: astrbot — **skill-generated plugins: `>=4.27,<5`** (contracts smoke-tested on production **4.27.4 and 4.28.1**: H1-B, public `astrbot.api.web`, notes ≥4.27). Official **teaching** examples may still show `>=4.16,<5` (ecosystem floor). Raise scaffold default to `>=4.28,<5` only when templates truly depend on 4.28-only APIs (not required as of 4.28.1 validation). **4.29 caveat**: a template that ships `views/` **without** a `pages/` fallback must declare `">=4.29,<5"` — otherwise it silently has no UI on a 4.28 core. Docs are version-split: `webui/plugin-views.md` (4.29+) vs `webui/plugin-pages.md` (4.25.3–4.28.x).
   license: MIT
 ---
 
@@ -84,7 +84,7 @@ Deliver (no git commit/push without explicit user approval)
 | "Fix this error" | Bug fix | Official docs for the API + skill FIX guide; prefer minimal diff |
 | "Review my code" | Full audit | **Phase 4B** full pipeline on ALL files |
 | "Add a scheduled task" | Add cron | `agent/cron.md` (no dedicated official cron guide) |
-| "Make a settings page" | WebUI | Official `star/guides/plugin-pages.md` + `webui/plugin-pages.md` |
+| "Make a settings page" | WebUI | Official `star/guides/plugin-pages.md` (content = "Plugin Views" since 4.29) + `webui/plugin-views.md` (4.29+) / `webui/plugin-pages.md` (≤4.28) |
 
 ### Step 0.2: Confirm Plugin Name & Author (GATE)
 
@@ -148,7 +148,7 @@ Types may combine. Decision tree: `plugin-types/README.md`.
 | Session | `@session_waiter` | `references/plugin-patterns.md` | `star/guides/session-control.md` |
 | Cron | `cron_manager` | `agent/cron.md` | *(no dedicated official guide — `guides/cron.md` does not exist)*; use skill + runtime/changelog |
 | Hook | `@filter.on_llm_*` etc. | `agent/hooks.md` | `star/guides/listen-message-event.md` |
-| Web API | `register_web_api` | `webui/plugin-pages.md` | `star/guides/plugin-pages.md` |
+| Web API / Views | `register_web_api` | `webui/plugin-views.md` (4.29+) · `webui/plugin-pages.md` (≤4.28) | `star/guides/plugin-pages.md` |
 | Agent | `tool_loop_agent` | `agent/invoke-llm.md` | `star/guides/ai.md` |
 | Adapter | Platform adapter | `platform_adapters/adapter_interface.md` | **MUST** `plugin-platform-adapter.md` |
 
@@ -160,7 +160,7 @@ After type selection, fetch only what you need from `docs/en/dev/star/guides/` (
 |------|---------------------------|
 | LLM Tool / Agent | `star/guides/ai.md` |
 | Cron | No official `guides/cron.md` — follow skill `agent/cron.md` + core changelog/runtime |
-| Web API / pages | `star/guides/plugin-pages.md` |
+| Web API / Views | `star/guides/plugin-pages.md` *(URL kept; content is "Plugin Views" since 4.29)* |
 | Config | `star/guides/plugin-config.md` |
 | Session | `star/guides/session-control.md` |
 | Storage / KV | `star/guides/storage.md` |
@@ -252,11 +252,11 @@ review/review-workflow.md (orchestrator)
   │       - Dependency & import stability
   │       - Modular structure
   │       - Platform adapter config_metadata
-  │       - WebUI plugin pages
+  │       - WebUI plugin views (4.29+) / pages (≤4.28)
   │       - API deprecation checks
   │
    └── Fix & Re-audit
-      └── review/auto-fix-guide.md (FIX-00 ~ FIX-39; dedupe by symptom, no parallel conflicting fixes)
+      └── review/auto-fix-guide.md (FIX-00 ~ FIX-40; dedupe by symptom, no parallel conflicting fixes)
 ```
 
 ### Two-Phase Review
@@ -334,20 +334,24 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
 - `@filter.command_group` must use function pattern (`def math(): pass`), NOT class <!-- Source: guides/listen-message-event.md -->
 - `@filter.permission_type` cannot combine with `@filter.llm_tool` <!-- Source: guides/listen-message-event.md -->
 - `@filter.llm_tool` Args: must follow `param_name(type): description` <!-- Source: guides/ai.md -->
+- **LLM tool `parameters` root MUST be `{"type": "object"}`** (FIX-40): a non-object root raises `ValueError: Anthropic tool '<name>' input schema must have an object root.` on AstrBot ≥4.29.0 (#10520); on 4.28.x it silently dropped `$ref`/`oneOf`/ranges. Tool names must also stay unique — `openai_schema()` sorts by name, so a duplicate silently shadows. <!-- Source: core/agent/tool.py @4.29.0 -->
 
 ### Hooks & Bridge
 
 - `yield` is forbidden in `on_llm_request`/`on_llm_response`/`on_decorating_result`/`after_message_sent` — use `event.send()` <!-- Source: guides/listen-message-event.md -->
 - `system_prompt += ...` only for stable settings; use `extra_user_content_parts` for per-round dynamic (7-20x cost) <!-- Source: guides/listen-message-event.md -->
 - `self.text_to_image()` and `self.html_render()` are Star methods, not SDK functions <!-- Source: guides/html-to-pic.md -->
+- Bridge global: `window.AstrBotPluginView` (4.29+) / `window.AstrBotPluginPage` (≤4.28) — the other name stays an alias, so `A ?? B` is dual-compatible <!-- Source: guides/plugin-pages.md + PR #10307 -->
 - Bridge API: `onContext()`, NOT `onContextChange()` <!-- Source: guides/plugin-pages.md -->
-- Bridge endpoint: no `/` prefix, no `..`, query via `params` <!-- Source: guides/plugin-pages.md -->
+- Bridge endpoint: prefer no leading `/` (the bridge strips it), no `..`, query via `params` <!-- Source: guides/plugin-pages.md -->
+- View/Page metadata: `.astrbot-plugin/i18n/<locale>.json` under `views.<view_name>` / `pages.<page_name>` — **there is no `_page.json`** <!-- Source: guides/plugin-pages.md; git log -S _page.json = empty -->
 
 ### Project, Gates & Review
 
 - **Identity gate**: before scaffold, confirm plugin `name` = `astrbot_plugin_<slug>` and `author` with the user
 - **Version gate (load floor)**: skill-generated `metadata.astrbot_version` defaults to **`">=4.27,<5"`** (`contracts.SCAFFOLD_ASTRBOT_VERSION`). Official teaching range `">=4.16,<5"` is **not** the scaffold default — metadata is a **hard load gate**, not a soft hint. Validated cores: **4.27.4 / 4.28.1** (`version_check(>=4.27,<5)` supported on both). If the user's core is older, either narrow APIs to what that core has **and** write a matching range, or they must upgrade / ignore-install knowingly. **Do not** emit `">=4.28,<5"` until 4.28-breaking templates are actually in use (as of 4.28.1, Star/filter/api.web surface matches skill contracts).
 - **Pre-code gate (Step 0.5)**: official Always-Read + import table §1 + FIX-00/02 + one type example — **before** first `main.py`; no coding from bare memory for astrbot imports/handlers
+- **Version-scoped surfaces — never mix `4.29+` with `≤4.28`**: Pages→Views (`pages/`→`views/`, `AstrBotPluginPage`→`AstrBotPluginView`, i18n `pages.<n>`→`views.<n>`, asset `asset_token` rewriting→path token `_t/`); OpenAPI `+4` view routes / `+5` chat-upload routes / `−2` page-asset routes, while `plugins/install/upload` is unchanged. Docs: `webui/plugin-views.md` (4.29+) · `webui/plugin-pages.md` (≤4.28 + migration). Bookkeeping: `mcp/openapi_drift_baseline.json`. **`_page.json` does not exist** — metadata lives in `.astrbot-plugin/i18n/<locale>.json`. <!-- Source: PR #10307 (4b049d1e) + PR #10415 (8831d950) + guides/plugin-pages.md @ v4.29.0 -->
 - After **first** code generation, run **Phase A** runtime review on all new files; fix 🔴 before claiming runnable; prefer MCP `astrbot_review_path` then open only matching FIX sections
 - After features complete or user audit request, run **Phase B** full-tree review (accuracy, security, completeness)
 - User requests "review"/"audit"/"校验"/"审核" → **Phase B** on ALL files
@@ -389,7 +393,9 @@ Pipeline steps A→B always use: `metadata-validation` → `main-file-checklist`
   3. `astrbot_ensure_plugin_dev_skill(plugin_id, provider_id, confirm_create=true, …)` builds from **default** config with `plugin_set=[plugin]` (+ optional extras). Never return full config body (secrets).
   4. If profile already exists: **stop** — user chooses `exist_policy=abort|recreate|rename_old` (recreate needs `confirm_delete_existing`; deletes **profile only**, not the plugin).
   5. After create: tell user to open **Dashboard → WebChat → select `plugin_dev_skill`** for manual testing.
-  6. MCP WebChat smoke: `astrbot_chat_probe` — **default OFF**; call only with `confirm_probe=true` after user allows (or `ASTRBOT_ALLOW_CHAT_PROBE`). Needs **chat-scoped** API key, `username`, default `config_name=plugin_dev_skill`. All probes reuse ONE fixed smoke session (`mcp-smoke-<username>`, override via `session_id` / `ASTRBOT_CHAT_SMOKE_SESSION_ID`) — a single stable Dashboard WebChat entry the user manages there; API keys **cannot** delete user-owned sessions (creator check, source-verified), so never attempt auto-deletion or system-scope workarounds. Prefer user-driven Dashboard chat for primary testing.
+  6. MCP WebChat smoke: `astrbot_chat_probe` / `astrbot_smoke_suite` — **default OFF**; call only with `confirm_probe`/`confirm=true` after user allows (or `ASTRBOT_ALLOW_CHAT_PROBE`). Needs **chat-scoped** API key, `username`, default `config_name=plugin_dev_skill`. All probes reuse ONE fixed smoke session (`mcp-smoke-<owner>`, override via `session_id` / `ASTRBOT_CHAT_SMOKE_SESSION_ID`).
+     **Owner choice — prefer the operator's real Dashboard (admin) username.** Sessions then land in *their own* WebChat list, so they are visible and manually manageable, and the setup does not hinge on a synthetic name that a future core might start validating. Requirement: an admin username is only accepted when the key holds the sensitive sub-scope **`chat:admin`** (which itself requires `chat`); otherwise core rejects it with “username is reserved for an AstrBot administrator” and the probe returns `error_kind=admin_username_needs_chat_admin`. A plain non-admin username works without that scope but leaves sessions invisible in the operator's WebChat.
+     **Cleanup is a closed loop**: `smoke_suite` auto-cleans by default (`auto_cleanup=true`) — after the run, including aborted/early-exit paths, it removes this run's session **and drains older `mcp-smoke-*` leftovers** for the owner, so repeated smoke cycles never accumulate residue. Deletion needs `ASTRBOT_ALLOW_MUTATIONS=true`; when disabled the result says `cleanup.skipped=mutations_disabled` instead of failing. Deleting uses two endpoints with different gates (source-verified): `DELETE /chat/sessions/{id}` is `creator`-gated (API key loses for username-owned sessions), while `DELETE /conversations/{cid}` is `data`-scope with no creator check — so the user-visible conversation is still removed. Only `mcp-smoke-*` ids ever reach the `data`-scope delete. Never attempt system-scope workarounds for `/api-keys`. Prefer user-driven Dashboard chat for primary testing.
   6b. `astrbot_chat_sessions_cleanup` — **webchat-platform-only** deletion with verification against the username's session list (other platforms → `scope_violation`); needs mutations + `confirm_cleanup=true` + user-reviewed list; can only delete sessions created via the API key itself.
   6c. `astrbot_scaffold_plugin(name, author, plugin_type=command|llm_tool|session|cron|hook|web|agent|adapter, …)` — contracts skeleton; **must** finish with review error=0. `adapter` = frame only (no WebChat smoke until you provide a live adapter). BUSINESS edits only after.
   6c-bis. **Staging → install, never hand-copy**: `output_dir` is only a staging area (default `ASTRBOT_DEV_WORKSPACE` or `~/.astrbot_skill_workspace`; **never cwd**). Always upload via `astrbot_plugin_install_path(path)`; the INSTALLED path is `<data>/plugins/<root_dir_name>/` no matter where the staging dir is. Do **not** ask the user to copy files into `/AstrBot/<name>/`. Use `extra_files_json` to deliver the full plugin in one call (main.py / metadata.yaml / requirements.txt / **_conf_schema.json** / README.md). If a plugin reads `config`, it **must ship `_conf_schema.json`**, or `config_set` returns 400 "没有注册配置".
@@ -462,7 +468,8 @@ Goal: stronger Star understanding **and** low token/time cost via **strict on-de
 | Cron | `agent/cron.md` |
 | Hooks | `agent/hooks.md` |
 | Config / `_conf_schema` | `references/conf-schema.md` |
-| WebUI | `webui/plugin-pages.md` |
+| WebUI Views (4.29+) | `webui/plugin-views.md` |
+| WebUI Pages (4.25.3–4.28.x) | `webui/plugin-pages.md` |
 | Split main.py | `references/modular-split.md` |
 | Platform adapter | `platform_adapters/adapter_interface.md` |
 | Storage | `storage_utils/kv_storage.md` and/or `file_storage.md` as needed |
@@ -558,7 +565,8 @@ skill_astrbot_plugin_dev_review/
 │   └── plugin-i18n.md                    # Internationalization
 │
 ├── webui/                                # WebUI
-│   └── plugin-pages.md                   # Dashboard + Bridge API + SSE
+│   ├── plugin-views.md                   # Views `views/` — AstrBot >=4.29 (primary)
+│   └── plugin-pages.md                   # Pages `pages/` — 4.25.3–4.28.x (+ migration)
 │
 ├── references/                           # Reference documentation
 │   ├── core-concepts.md                  # Core API index
@@ -572,7 +580,7 @@ skill_astrbot_plugin_dev_review/
 │   ├── metadata-validation.md            # Structure validation
 │   ├── main-file-checklist.md            # main.py 10 checks + import table
 │   ├── general-file-checklist.md         # General code 5-dimension review
-│   └── auto-fix-guide.md                 # 40 fix patterns (FIX-00 ~ FIX-39)
+│   └── auto-fix-guide.md                 # 41 fix patterns (FIX-00 ~ FIX-40)
 │
 ├── plugin-types/                         # Plugin type examples
 │   ├── README.md                         # Type selection guide

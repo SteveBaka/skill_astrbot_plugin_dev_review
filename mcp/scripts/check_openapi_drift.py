@@ -9,16 +9,27 @@ Data source (verified 2026-07):
     source is https://docs.astrbot.app/openapi.json (no auth, ETag + Last-Modified).
   - info.version is pinned at "0.1.0" — never use it for drift; use ETag/content.
 
-Usage (from repo root or mcp/):
-  python3 mcp/scripts/check_openapi_drift.py            # check, report, exit code
-  python3 mcp/scripts/check_openapi_drift.py --update   # refresh local snapshot
-  python3 mcp/scripts/check_openapi_drift.py --offline  # runtime-vs-snapshot only
+Requires Python >= 3.10 (this file uses zip(strict=)); see mcp/SETUP.md § tooling.
+Run it with the project venv interpreter, not a bare `python3`:
+
+  ./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py               # check + exit code
+  ./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --update      # refresh snapshot
+  ./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --offline     # runtime-vs-snapshot
+  ./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py --no-baseline # ignore accepted drift
 
 Exit codes:
-  0  no drift (or offline check passed)
-  1  drift detected that touches runtime-used endpoints  → fix runtime first
-  2  drift detected elsewhere only                       → informational
+  0  no NEW drift (accepted-baseline entries stay quiet) / offline check passed
+  1  NEW drift touching runtime-used endpoints            → fix runtime first
+  2  NEW drift elsewhere only                             → informational
   3  snapshot missing / fetch failed / bad invocation
+
+Accepted drift baseline: "mcp/openapi_drift_baseline.json"
+  The snapshot deliberately stays at the older core baseline so that users on older
+  cores with a newer skill stay supported — which means the SAME delta is seen against
+  live on every run. Entries listed in the baseline are reported as accepted and do not
+  affect the exit code; anything else is NEW. Baseline entries that no longer appear in
+  the raw delta are reported as STALE so they can be pruned after an --update.
+  Pass --no-baseline to see the raw, unfiltered delta.
 
 Snapshot: "AstrBot OpenAPI v1.json" at repo root (gitignored; local dev asset).
 ETag sidecar: ".astrbot_openapi.etag" next to it (gitignored) for cheap 304 checks.
@@ -41,7 +52,12 @@ MCP_DIR = SCRIPT_DIR.parent
 REPO_ROOT = MCP_DIR.parent
 SNAPSHOT_PATH = REPO_ROOT / "AstrBot OpenAPI v1.json"
 ETAG_PATH = REPO_ROOT / ".astrbot_openapi.etag"
+BASELINE_PATH = MCP_DIR / "openapi_drift_baseline.json"
 RUNTIME_DIR = MCP_DIR / "runtime"
+
+MIN_PYTHON = (3, 10)
+
+DRIFT_KEYS = ("added_paths", "removed_paths", "changed_methods")
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -166,11 +182,62 @@ def check_runtime_vs_spec(spec_ops: dict[str, list[str]], runtime_paths: set[str
     return sorted(p for p, hit in resolved.items() if hit is None)
 
 
+def empty_drift() -> dict[str, list[str]]:
+    return {key: [] for key in DRIFT_KEYS}
+
+
+def load_baseline(path: Path = BASELINE_PATH) -> dict[str, list[str]]:
+    """Accepted drift from mcp/openapi_drift_baseline.json (empty when absent/unreadable)."""
+    if not path.is_file():
+        return empty_drift()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — baseline is advisory, never fatal
+        print(f"[drift] WARNING: baseline unreadable ({exc}); treating all drift as NEW")
+        return empty_drift()
+    accepted = data.get("accepted_drift") if isinstance(data, dict) else None
+    if not isinstance(accepted, dict):
+        print(f"[drift] WARNING: {path.name} has no 'accepted_drift' object; ignoring it")
+        return empty_drift()
+    return {
+        key: [p for p in accepted.get(key, []) if isinstance(p, str)] for key in DRIFT_KEYS
+    }
+
+
+def split_by_baseline(
+    drift: dict[str, list[str]], accepted: dict[str, list[str]]
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Split raw drift into (new_drift, stale_baseline_entries)."""
+    new = {
+        key: [p for p in drift[key] if p not in set(accepted[key])] for key in DRIFT_KEYS
+    }
+    stale = {
+        key: [p for p in accepted[key] if p not in set(drift[key])] for key in DRIFT_KEYS
+    }
+    return new, stale
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="AstrBot OpenAPI contract drift check")
     ap.add_argument("--update", action="store_true", help="refresh local snapshot from live")
     ap.add_argument("--offline", action="store_true", help="only check runtime vs local snapshot")
+    ap.add_argument(
+        "--no-baseline",
+        action="store_true",
+        help="report the raw delta, ignoring mcp/openapi_drift_baseline.json",
+    )
     args = ap.parse_args()
+
+    if sys.version_info < MIN_PYTHON:
+        print(
+            "[drift] ERROR: this script needs Python >= "
+            f"{'.'.join(str(p) for p in MIN_PYTHON)} (it uses zip(strict=)).\n"
+            f"[drift] Detected: Python {sys.version.split()[0]} at {sys.executable}\n"
+            "[drift] Use the project venv interpreter instead:\n"
+            "[drift]   ./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py",
+            file=sys.stderr,
+        )
+        return 3
 
     if not SNAPSHOT_PATH.is_file() and not args.update:
         print(f"[drift] snapshot missing: {SNAPSHOT_PATH}")
@@ -215,6 +282,13 @@ def main() -> int:
         if new_etag:
             ETAG_PATH.write_text(new_etag)
         print(f"[drift] snapshot updated: {SNAPSHOT_PATH.name}")
+        if BASELINE_PATH.is_file() and load_baseline():
+            print(
+                f"[drift] NOTE: {BASELINE_PATH.name} now describes drift that no longer "
+                "exists (the snapshot matches live). Prune 'accepted_drift' and its "
+                "'annotations' to keep the baseline honest — an over-stated baseline "
+                "would mask that same drift if it ever reappears."
+            )
         missing = check_runtime_vs_spec(live_ops, runtime_paths)
         if missing:
             print("[drift] WARNING — runtime endpoints missing in new snapshot:")
@@ -235,16 +309,39 @@ def main() -> int:
         print("[drift] no path/method drift between snapshot and live")
         return 0
 
-    print(f"[drift] DRIFT DETECTED ({total} entries):")
+    accepted_drift = empty_drift() if args.no_baseline else load_baseline()
+    new_drift, stale = split_by_baseline(drift, accepted_drift)
+    new_total = sum(len(v) for v in new_drift.values())
+    accepted_total = total - new_total
+
+    print(f"[drift] RAW drift: {total} entrie(s) between snapshot and live")
+    if accepted_total:
+        print(
+            f"[drift] {accepted_total} accepted by {BASELINE_PATH.name} "
+            "(older-core compatibility; not treated as new)"
+        )
     for key, label in (
         ("added_paths", "+ added"),
         ("removed_paths", "- removed"),
         ("changed_methods", "~ methods changed"),
     ):
-        for p in drift[key]:
+        for p in stale[key]:
+            print(f"    STALE baseline entry ({label}) — prune after --update: {p}")
+
+    if new_total == 0:
+        print("[drift] no NEW drift beyond the accepted baseline")
+        return 0
+
+    print(f"[drift] NEW DRIFT DETECTED ({new_total} entries):")
+    for key, label in (
+        ("added_paths", "+ added"),
+        ("removed_paths", "- removed"),
+        ("changed_methods", "~ methods changed"),
+    ):
+        for p in new_drift[key]:
             print(f"    {label}: {p}")
 
-    impacted = runtime_impact(drift, runtime_paths)
+    impacted = runtime_impact(new_drift, runtime_paths)
     missing_live = check_runtime_vs_spec(live_ops, runtime_paths)
     affected = sorted(set(impacted) | set(missing_live))
     if affected:
@@ -254,7 +351,11 @@ def main() -> int:
         print("[drift] after fixing runtime, refresh snapshot: --update")
         return 1
 
-    print("[drift] runtime endpoints unaffected; refresh snapshot when convenient (--update)")
+    print(
+        "[drift] runtime endpoints unaffected. Refresh the snapshot (--update), or — to keep "
+        "older cores supported — add these paths to mcp/openapi_drift_baseline.json with a "
+        "PR reference and an old-core note."
+    )
     return 2
 
 

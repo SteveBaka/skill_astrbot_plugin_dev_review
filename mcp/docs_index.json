@@ -61,7 +61,8 @@
     "text_to_image": "Text to Image"
   },
   "webui": {
-    "plugin-pages": "Plugin Dashboard Pages"
+    "plugin-pages": "Plugin Dashboard Pages (AstrBot 4.25.3-4.28.x)",
+    "plugin-views": "Plugin Views (AstrBot 4.29+)"
   },
   "__root__": {
     "AGENTS": "AGENTS",

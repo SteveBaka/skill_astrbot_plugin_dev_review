@@ -125,8 +125,32 @@ resp = await self.context.tool_loop_agent(
 
 ## Tips
 
-- `parameters` must be valid JSON Schema
+- `parameters` must be valid JSON Schema, and its **root must be `{"type": "object"}`**
+  (see the Anthropic rule below)
 - Decorator approach requires well-written docstrings, otherwise schema parsing fails
 - New projects are recommended to use the class definition approach
 - `@filter.permission_type` cannot be combined with `@filter.llm_tool`
 - **Always return `str` from `call()`** — do not use `ToolExecResult` unless you need `image_url`
+
+### Object-root schema is mandatory (v4.29.0+ #10520)
+
+Anthropic requests now raise instead of silently degrading:
+
+```
+ValueError: Anthropic tool '<name>' input schema must have an object root.
+```
+
+Before 4.29, `anthropic_schema()` copied only `properties` and `required`, quietly dropping
+every other JSON Schema constraint. It now does
+`input_schema.update(copy.deepcopy(tool.parameters))`, preserving `$ref`, `oneOf`,
+numeric ranges and other constraints — and it **rejects a non-object root**.
+
+| Declaration | 4.28.x | 4.29.0+ |
+|---|---|---|
+| `{"type": "object", "properties": {...}}` | fine | fine |
+| `{"properties": {...}}` (root type omitted) | fine | fine — defaults to `object` |
+| `{"type": "array", ...}` / `{"type": "string", ...}` | constraints dropped, call went out | **`ValueError`** |
+
+Also: `openai_schema()` sorts tools by name for prompt-cache stability, so **registration
+order is not schema order** — keep tool names unique, or the wrong one silently shadows
+another.

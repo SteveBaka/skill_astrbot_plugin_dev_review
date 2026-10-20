@@ -74,6 +74,22 @@ Do not confuse AstrBot native Skills with this Kilo skill repo. For plugin autho
 
 Backups may include the skills directory (≥4.26.0). Versioned skill download archive names are handled by core (≥4.26.7).
 
+**Fault isolation (≥4.29.1, #10591):** one unreadable plugin directory no longer poisons
+the request. `list_skills()` previously called `plugins_root.iterdir()` with no error
+isolation, so a single ACL-denied or transiently broken entry raised out of the system
+prompt build and failed the whole agent turn — even when that skill was unrelated. Core
+now wraps the root listing and both per-directory normalization loops in `try/except
+OSError`, logs the offending path, and skips it.
+
+Practical rules for a plugin shipping `skills/`:
+
+- a broken sibling skill no longer breaks you, but **your own** unreadable `SKILL.md`
+  still means your skill is silently skipped — keep files world-readable;
+- do not ship symlinks/reparse points or ACL-restricted files inside `skills/`
+  (Windows long paths and sandboxes are the usual culprits);
+- `SKILL.md` must be UTF-8 and valid YAML front matter, or the skill is dropped, not
+  the request.
+
 ## Usage in Agent System
 
 Registered Skills appear in the skill manager and can be used by the agent system. The agent reads each Skill's `SKILL.md` for instructions.

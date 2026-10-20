@@ -543,3 +543,58 @@ class TestFix39AdapterDataRoot:
         )
         report = review_adapter_directory(_write_adapter(tmp_path, src))
         assert "FIX-39" in [f.rule for f in report.findings]
+
+
+class TestToolSchemaRoot:
+    """FIX-40: non-object root raises ValueError on Anthropic since AstrBot 4.29.0."""
+
+    @staticmethod
+    def _plugin(main_src: str):
+        import pathlib
+        import tempfile
+
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "metadata.yaml").write_text(
+            "name: astrbot_plugin_t\ndesc: d\nversion: '1.0'\nauthor: a\n"
+        )
+        (d / "main.py").write_text(main_src)
+        return d
+
+    def test_flags_non_object_root(self):
+        from runtime.review_static import review_plugin_directory
+
+        d = self._plugin('TOOL_PARAMS = {"type": "array", "properties": {}}\n')
+        r = review_plugin_directory(d)
+        hits = [f for f in r.findings if f.rule == "FIX-40"]
+        assert len(hits) == 1
+        assert hits[0].severity == "error"
+        assert "object root" in hits[0].message
+
+    def test_flags_non_object_in_function_tool_call(self):
+        from runtime.review_static import review_plugin_directory
+
+        d = self._plugin(
+            "from astrbot.core.agent.tool import FunctionTool\n"
+            "t = FunctionTool(name='x', parameters={'type': 'string', 'properties': {}}, "
+            "description='d', handler=None)\n"
+        )
+        r = review_plugin_directory(d)
+        assert [f for f in r.findings if f.rule == "FIX-40"]
+
+    def test_accepts_object_root(self):
+        from runtime.review_static import review_plugin_directory
+
+        d = self._plugin('TOOL_PARAMS = {"type": "object", "properties": {"a": {"type": "string"}}}\n')
+        assert not [f for f in review_plugin_directory(d).findings if f.rule == "FIX-40"]
+
+    def test_accepts_omitted_type(self):
+        from runtime.review_static import review_plugin_directory
+
+        d = self._plugin('TOOL_PARAMS = {"properties": {"a": {"type": "string"}}}\n')
+        assert not [f for f in review_plugin_directory(d).findings if f.rule == "FIX-40"]
+
+    def test_ignores_unrelated_dict(self):
+        from runtime.review_static import review_plugin_directory
+
+        d = self._plugin('OTHER_SCHEMA = {"type": "array"}\n')
+        assert not [f for f in review_plugin_directory(d).findings if f.rule == "FIX-40"]

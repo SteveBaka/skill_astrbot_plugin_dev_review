@@ -1,0 +1,143 @@
+{
+  "$comment": [
+    "ACCEPTED OpenAPI DRIFT BASELINE — read this before editing.",
+    "",
+    "Purpose: the local snapshot (AstrBot OpenAPI v1.json) intentionally stays at the",
+    "4.28-era baseline. Users on older cores plus a newer skill are a supported",
+    "combination, so the snapshot must not silently follow the newest spec. That means",
+    "check_openapi_drift.py will permanently see the same delta against live; without",
+    "this file exactly the same entries are re-reported on every run, which buries NEW",
+    "drift in fixed noise.",
+    "",
+    "Behaviour: check_openapi_drift.py subtracts 'accepted_drift' from the raw delta.",
+    "  - drift covered here  -> reported as accepted (quiet, exit 0)",
+    "  - drift NOT here      -> reported as NEW (exit 2, or 1 if it touches runtime)",
+    "  - entries here that no longer appear in the raw delta -> reported as STALE",
+    "    (prune them after a snapshot --update)",
+    "",
+    "Do NOT add an entry just to silence a failure. Every entry needs a real PR/issue",
+    "reference and a note explaining why older cores are unaffected.",
+    "",
+    "Every entry in accepted_drift has a matching entry in 'annotations' below."
+  ],
+
+  "meta": {
+    "snapshot_baseline_core": "4.28.1",
+    "snapshot_paths": 163,
+    "live_spec_observed_core": "4.29.0",
+    "live_spec_paths": 170,
+    "recorded_at": "2026-10-16",
+    "runtime_impact": "none — no endpoint used by mcp/runtime/*.py matches an accepted entry",
+    "policy": "Keep the snapshot at the older baseline for old-core compatibility; annotate instead of refreshing."
+  },
+
+  "accepted_drift": {
+    "added_paths": [
+      "/api/v1/files/upload/abort",
+      "/api/v1/files/upload/chunk",
+      "/api/v1/files/upload/complete",
+      "/api/v1/files/upload/init",
+      "/api/v1/files/upload/status",
+      "/api/v1/plugins/view",
+      "/api/v1/plugins/views",
+      "/api/v1/plugins/{}/views",
+      "/api/v1/plugins/{}/views/{}"
+    ],
+    "removed_paths": [
+      "/api/v1/plugins/page/assets",
+      "/api/v1/plugins/{}/pages/{}/assets/{}"
+    ],
+    "changed_methods": []
+  },
+
+  "annotations": {
+    "/api/v1/plugins/views": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10307",
+      "scope": "plugin",
+      "summary": "List plugin views (query plugin_id). Canonical replacement for /plugins/pages.",
+      "old_core_note": "Absent on <=4.28.1. Plugins there ship pages/ only; nothing calls this route from mcp/runtime."
+    },
+    "/api/v1/plugins/view": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10307",
+      "scope": "plugin",
+      "summary": "View entry HTML by query plugin_id + page_name (query param name kept for wire compat).",
+      "old_core_note": "Absent on <=4.28.1; the old core serves /plugins/page instead."
+    },
+    "/api/v1/plugins/{}/views": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10307 / #10415",
+      "scope": "plugin",
+      "summary": "List plugin views for one plugin.",
+      "old_core_note": "Absent on <=4.28.1; the page-named alias exists only on 4.29+."
+    },
+    "/api/v1/plugins/{}/views/{}": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10307 / #10415",
+      "scope": "plugin",
+      "summary": "View entry HTML. Also backs the scoped path-token asset route /views/{view}/_t/{token}/...",
+      "old_core_note": "Absent on <=4.28.1. Those cores rewrite relative asset URLs server-side instead; a plugin using plain RELATIVE asset paths works on both."
+    },
+    "/api/v1/plugins/page/assets": {
+      "kind": "removed",
+      "since_core": "4.29.0",
+      "pr": "#10415",
+      "scope": "plugin",
+      "summary": "Authenticated page-asset route removed — superseded by the path-token view asset route.",
+      "old_core_note": "Still present on <=4.28.1, which is why the snapshot lists it. Never called by mcp/runtime."
+    },
+    "/api/v1/plugins/{}/pages/{}/assets/{}": {
+      "kind": "removed",
+      "since_core": "4.29.0",
+      "pr": "#10415",
+      "scope": "plugin",
+      "summary": "Per-page asset route removed for the same reason; it had no callers outside the generated client.",
+      "old_core_note": "Still present on <=4.28.1. Never called by mcp/runtime."
+    },
+    "/api/v1/files/upload/init": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10123",
+      "scope": "file",
+      "summary": "Chunked upload init for CHAT ATTACHMENTS (ChatUploadInitRequest).",
+      "old_core_note": "Absent on <=4.28.1. UNRELATED to plugin install: /api/v1/plugins/install/upload is still single-shot multipart and unchanged, so Scheme A is unaffected."
+    },
+    "/api/v1/files/upload/chunk": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10123",
+      "scope": "file",
+      "summary": "Chunked upload part (multipart: upload_id, chunk_index, chunk).",
+      "old_core_note": "Absent on <=4.28.1. Chat attachments only; owner-scoped."
+    },
+    "/api/v1/files/upload/complete": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10123",
+      "scope": "file",
+      "summary": "Finish a chunked chat upload.",
+      "old_core_note": "Absent on <=4.28.1. Not used by mcp/runtime."
+    },
+    "/api/v1/files/upload/abort": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10123",
+      "scope": "file",
+      "summary": "Abort a chunked chat upload.",
+      "old_core_note": "Absent on <=4.28.1. Not used by mcp/runtime."
+    },
+    "/api/v1/files/upload/status": {
+      "kind": "added",
+      "since_core": "4.29.0",
+      "pr": "#10123",
+      "scope": "file",
+      "summary": "Query a chunked chat upload session (resume support).",
+      "old_core_note": "Absent on <=4.28.1. Not used by mcp/runtime."
+    }
+  }
+}

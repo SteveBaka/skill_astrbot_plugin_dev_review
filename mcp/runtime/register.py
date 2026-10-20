@@ -510,6 +510,7 @@ def register_runtime_tools(mcp: Any) -> None:
         session_id: str = "",
         enable_streaming: bool = False,
         timeout_seconds: float = 0,
+        auto_cleanup: bool = False,
     ) -> str:
         """
         [RUNTIME P3] Opt-in WebChat smoke: POST /api/v1/chat, parse SSE summary.
@@ -519,8 +520,16 @@ def register_runtime_tools(mcp: Any) -> None:
         ASTRBOT_CHAT_USERNAME). Needs chat-scoped API key.
         Session policy: all probes reuse ONE fixed smoke session
         ("mcp-smoke-<username>", override via session_id arg or
-        ASTRBOT_CHAT_SMOKE_SESSION_ID) — a single stable Dashboard WebChat entry
-        the user manages/deletes there (API keys cannot delete user sessions).
+        ASTRBOT_CHAT_SMOKE_SESSION_ID). Cleanup depends on that owner string:
+        WebChat username → user deletes it in Dashboard (an API key gets
+        Permission denied); set ASTRBOT_CHAT_USERNAME=api_key:<key_id> (key_id is
+        shown in Dashboard → API keys) → the session is API-key-owned and
+        astrbot_chat_sessions_cleanup CAN delete it. The result reports
+        cleanup.mode = auto|manual|unknown after verifying ownership.
+
+        auto_cleanup=true removes this run's session AND any older mcp-smoke-*
+        leftovers for the same owner (needs ASTRBOT_ALLOW_MUTATIONS=true).
+        Report says what it did; nothing user-owned is ever touched.
         Do not use for production chatter; prefer Dashboard WebChat for main testing.
 
         MESSAGE GUIDANCE (LLM): fill `message` with the PLUGIN'S OWN command from
@@ -544,6 +553,7 @@ def register_runtime_tools(mcp: Any) -> None:
             session_id=session_id,
             enable_streaming=enable_streaming,
             timeout_seconds=timeout_seconds,
+            auto_cleanup=auto_cleanup,
         )
 
     @mcp.tool()
@@ -559,15 +569,18 @@ def register_runtime_tools(mcp: Any) -> None:
 
         KNOWN LIMIT (source-verified): AstrBot checks session.creator ==
         auth identity, and API-key identity is "api_key:<key_id>" — so this tool
-        CANNOT delete sessions created by Dashboard users; those return
-        Permission denied and must be deleted in Dashboard WebChat. It can only
-        delete sessions created via this API key.
+        cannot delete sessions created by Dashboard users (Permission denied;
+        delete those in Dashboard WebChat). It CAN delete sessions created under
+        this key's own identity "api_key:<key_id>" — i.e. smoke sessions whose
+        owner (ASTRBOT_CHAT_USERNAME) is that same string.
         HARD SCOPE: webchat platform only. Every id (caller-supplied included) is
         verified against the username's webchat session list; any id from another
         platform/source (QQ/Telegram/... real conversations) fails the whole call
         with scope_violation — those are privacy-protected and never deleted.
         Modes: session_ids="id1,id2,..." (surgical) OR all_for_username=true.
-        username required in both modes (arg or ASTRBOT_CHAT_USERNAME).
+        username required in both modes (arg or ASTRBOT_CHAT_USERNAME) and must equal
+        the session creator — an API key can only delete sessions owned by its own
+        identity "api_key:<key_id>" (see astrbot_chat_probe cleanup.mode).
         SAFETY: needs ASTRBOT_ALLOW_MUTATIONS=true AND confirm_cleanup=true —
         first show the user the list via astrbot_chat_sessions_brief and get
         explicit OK. Hard cap max_delete per call (default 50).
@@ -656,6 +669,7 @@ def register_runtime_tools(mcp: Any) -> None:
         max_cases: int = 8,
         extra_messages: str = "",
         timeout_seconds: float = 0,
+        auto_cleanup: bool = True,
     ) -> str:
         """
         [RUNTIME P3+] Composite smoke test for an installed plugin.
@@ -671,6 +685,12 @@ def register_runtime_tools(mcp: Any) -> None:
         (arg or ASTRBOT_CHAT_USERNAME); admin commands skipped unless
         include_admin=true; hard cap max_cases (default 8).
         extra_messages: optional '||'-separated custom case messages.
+        auto_cleanup (default TRUE): after the run — including aborted and
+        early-exit paths — remove this run's smoke session AND older mcp-smoke-*
+        leftovers for the same owner, so repeated smoke cycles leave no residue.
+        Needs ASTRBOT_ALLOW_MUTATIONS=true; otherwise cleanup is skipped with a
+        reason (the smoke result itself is unaffected). Set false to keep the
+        session for manual inspection.
         """
         return _m("tools_smoke").astrbot_smoke_suite(
             plugin_id,
@@ -681,6 +701,7 @@ def register_runtime_tools(mcp: Any) -> None:
             max_cases=max_cases,
             extra_messages=extra_messages,
             timeout_seconds=timeout_seconds,
+            auto_cleanup=auto_cleanup,
         )
 
     # ── P1 log bridge relay (MCP client → plugin SSE server) ───

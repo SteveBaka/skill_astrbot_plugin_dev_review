@@ -130,10 +130,10 @@ Restart your MCP client (or Reload Window). You should see **6 docs tools** alwa
 | `astrbot_ensure_plugin_dev_skill` | **[P2.5]** Create `plugin_dev_skill` from default (**mutations** + confirms) |
 | `astrbot_chat_sessions_brief` | **[P3]** List WebChat sessions metadata (chat scope) |
 | `astrbot_chat_probe` | **[P3]** Opt-in SSE smoke via `POST /chat` (**confirm_probe**; fixed reusable smoke session) |
-| `astrbot_chat_sessions_cleanup` | **[P3]** Delete **webchat-only** sessions (**mutations** + confirm; cannot delete Dashboard-user sessions) |
+| `astrbot_chat_sessions_cleanup` | **[P3]** Delete **webchat-only** sessions (**mutations** + confirm). Two-stage: `chat/sessions` (creator-gated) → `conversations/{cid}` (**`data`** scope) + re-list verify. Only `mcp-smoke-*` ids reach stage two. `smoke_suite` runs this automatically |
 | `astrbot_scaffold_plugin` | **[P2+]** Scaffold `command\|llm_tool\|session\|cron\|hook\|web\|agent\|adapter` from contracts; review error=0 invariant |
 | `astrbot_review_path` | **[P2+]** AST review `profile=plugin\|adapter` (FIX-mapped; contracts single source) |
-| `astrbot_smoke_suite` | **[P3+]** Composite smoke after **user** Dashboard config (enable / plugin_set / schema) |
+| `astrbot_smoke_suite` | **[P3+]** Composite smoke after **user** Dashboard config (enable / plugin_set / schema). `auto_cleanup=true` (default) drains smoke leftovers; needs mutations |
 | `astrbot_logs_history` | **[P1]** Recent AstrBot logs via MCP — relay to `astrbot_plugin_mcp_logs_bridge` SSE server (`limit`/`level`/`keyword`/`category` filters; needs `ASTRBOT_LOG_MCP_URL`) |
 | `astrbot_logs_tail` | **[P1]** Tail last N log lines via MCP relay (read-only) |
 | `astrbot_logs_search` | **[P1]** Keyword search over recent logs via MCP relay (read-only) |
@@ -160,9 +160,10 @@ Configure on the **MCP host** (`env` next to the server entry in `kilo.jsonc` / 
 | `ASTRBOT_HTTP_TIMEOUT` | no | seconds, default `15` (raise on slow NAS/VPN; upload/chat may need more) |
 | `ASTRBOT_ALLOW_MUTATIONS` | no | default off; `true` enables reload / set_enabled / config_set / install / uninstall / ensure_plugin_dev_skill |
 | `ASTRBOT_ALLOW_CHAT_PROBE` | no | default off; allows chat_probe without per-call `confirm_probe` |
-| `ASTRBOT_CHAT_USERNAME` | for chat_probe | default WebChat username |
+| `ASTRBOT_CHAT_USERNAME` | for chat_probe | **smoke session owner.** Prefer the operator's real Dashboard (admin) username — sessions then show up in their own WebChat. Admin ids require the key to hold the sensitive sub-scope `chat:admin`; a plain non-admin username needs no extra scope but stays invisible in their WebChat. Also accepts this key's identity `api_key:<key_id>` (key-owned ⇒ session row deletable by the key) |
 | `ASTRBOT_CHAT_CONFIG_NAME` | no | default `plugin_dev_skill` |
 | `ASTRBOT_CHAT_SMOKE_SESSION_ID` | no | fixed smoke session id (default `mcp-smoke-<username>`) |
+| `ASTRBOT_CHAT_SMOKE_DEADLINE` | no | overall cap for one chat probe in seconds (default `25`, kept under a typical MCP client window; `0` disables the client-window clamp) |
 | `ASTRBOT_ERROR_KB` | no | error-fingerprint store path (gitignored); install/smoke failures auto-record desensitized fingerprints |
 | `ASTRBOT_DEV_WORKSPACE` | no | scaffold staging dir (default `~/.astrbot_skill_workspace`; never cwd) |
 | `ASTRBOT_LOG_MCP_URL` | **enables** `astrbot_logs_*` | SSE endpoint of `astrbot_plugin_mcp_logs_bridge`. **Feature is DISABLED (tools not registered) when unset**; set explicitly to enable, e.g. `http://<astrbot>:6185/api/v1/plugins/extensions/astrbot_plugin_mcp_logs_bridge/sse`. `ASTRBOT_BASE_URL` alone does NOT enable it |
@@ -356,11 +357,13 @@ astrbot_chat_probe(
 |------|----------|
 | Gate | `confirm_probe=true` **or** env `ASTRBOT_ALLOW_CHAT_PROBE=true` |
 | API key | Must include **chat** scope (else 403) |
-| username | Required (`username` arg or `ASTRBOT_CHAT_USERNAME`) |
+| username | Required (`username` arg or `ASTRBOT_CHAT_USERNAME`) — this value becomes the session **creator** |
 | config | Default `config_name=plugin_dev_skill` (or `ASTRBOT_CHAT_CONFIG_NAME` / `config_id`) |
 | **message** | Fill the **plugin's actual command** (from `plugin_get` / `smoke_suite` components). Use `/plugin_help` to discover when unsure. Do **not** hardcode other plugins' commands (`/help` is Astrbot build-in command) |
 | session | **Fixed reusable smoke session** (default `mcp-smoke-<username>`; override via `session_id` arg or `ASTRBOT_CHAT_SMOKE_SESSION_ID`); server auto-creates it, all probes land in one stable Dashboard WebChat entry |
+| cleanup | Reported as `cleanup.mode`. A WebChat username ⇒ `manual` (an API key gets Permission denied on `chat/sessions`); `ASTRBOT_CHAT_USERNAME=api_key:<key_id>` ⇒ `auto`. Ownership is **verified** after the probe (one extra `GET /chat/sessions`). Independent of this mode, `auto_cleanup` (see below) still removes the **conversation** via the `data` scope |
 | Response | SSE (`data: {...}`); tool returns truncated `plain_texts` / `records` |
+| Timeout | Two separate limits. **Overall cap** = `min(timeout + 15s, ASTRBOT_CHAT_SMOKE_DEADLINE)` (default 25 s), enforced by streaming reads — without it an SSE body that keeps flowing never trips httpx's per-operation timeout and the sync read **blocks the whole MCP process**, so every other tool times out. The cap is deliberately smaller than a typical **MCP client window** (~30 s): a client-side `-32001` discards the parsed events, whereas a truncated result is still usable (`truncated: true`, `summary.ended: false`). Raise `ASTRBOT_CHAT_SMOKE_DEADLINE` if your client allows longer |
 | Privacy | No transcript files; main test remains Dashboard WebChat |
 
 Env extras: `ASTRBOT_ALLOW_CHAT_PROBE`, `ASTRBOT_CHAT_USERNAME`, `ASTRBOT_CHAT_CONFIG_NAME`, `ASTRBOT_CHAT_SMOKE_SESSION_ID`.
@@ -369,7 +372,60 @@ Env extras: `ASTRBOT_ALLOW_CHAT_PROBE`, `ASTRBOT_CHAT_USERNAME`, `ASTRBOT_CHAT_C
 
 `astrbot_chat_sessions_cleanup` deletes WebChat sessions with a hard privacy gate: every id must verify as a **webchat-platform** session of the given username (other platforms → `scope_violation`, whole call refused). Requires `ASTRBOT_ALLOW_MUTATIONS=true` + `confirm_cleanup=true`, hard cap `max_delete`.
 
-**Known limit (source-verified 2026-07):** AstrBot checks `session.creator == auth identity`, and API-key identity is `api_key:<key_id>` — so sessions created by Dashboard users always return `Permission denied` via API key; delete those in Dashboard WebChat. Do **not** work around this by granting system scope; the fixed-session probe design makes cleanup mostly unnecessary.
+**Two different permission models — this is the key fact:**
+
+| Endpoint | Scope | Gate |
+|---|---|---|
+| `DELETE /api/v1/chat/sessions/{id}` | `chat` | `session.creator == auth identity` — an API key **always** loses for username-owned sessions |
+| `GET/DELETE /api/v1/conversations/{cid}` | `data` | **no creator check**; `user_id` is a request parameter |
+
+So the chat session row can stay blocked while the **user-visible conversation is still
+removable**. `astrbot_chat_sessions_cleanup` therefore does:
+
+1. `DELETE /chat/sessions/{id}` (works only for key-owned sessions);
+2. if refused → `GET /conversations?platforms=webchat` to find the real **`cid`**
+   (a conversation uuid — **not** the session id), then
+   `DELETE /conversations/{cid}?user_id=<umo>`;
+3. **re-list and verify** — this endpoint returns 200 for a non-existent `cid` too, so
+   `res.ok` alone is not evidence (that mistake produced a false success once;
+   `test_verification_catches_a_silent_no_op` pins it).
+
+Result fields: `cleanup.mode` (`auto`/`manual`/`unknown`, from the probe),
+`conversation_fallback` (what the `data`-scope step did), `session_row_retained`
+(true when core kept the platform session row while the conversation is gone).
+
+### Auto-cleanup — closed-loop smoke (default ON for `smoke_suite`)
+
+Smoke runs create sessions; without a drain they accumulate invisibly (a `creator` the
+Dashboard user filter can't see). So `astrbot_smoke_suite(auto_cleanup=True)` and
+`astrbot_chat_probe(auto_cleanup=True)` call `cleanup_smoke_workspace()`, which:
+
+| Step | What happens |
+|---|---|
+| 1 | collects this run's session id **plus** older `mcp-smoke-*` sessions of the owner (found by listing) |
+| 2 | tries `DELETE /chat/sessions/{id}` (succeeds only for key-owned sessions) |
+| 3 | falls back to `GET /conversations` → `DELETE /conversations/{cid}` for whatever survived |
+| 4 | re-lists and verifies; reports `cleaned`, `stale_discovered`, `failures` |
+
+Design rules worth keeping:
+
+- **Once per run, not per case.** All cases share one fixed session; clearing between
+  cases would rebuild it and break multi-turn context.
+- **Every exit path cleans** — normal end, aborted case, disabled plugin, no cases.
+  A crashed run is exactly when leftovers appear.
+- **Deletion respects `ASTRBOT_ALLOW_MUTATIONS`.** Probing sends messages, but cleaning
+  deletes; a read-only setup must not silently start deleting. When off, the report is
+  `cleanup.skipped=mutations_disabled` with a hint, and the smoke verdict is unaffected.
+- **Idempotent when already clean** — `attempted: false, cleaned: true`,
+  "No smoke leftovers for this owner".
+- `auto_cleanup=false` keeps the session for manual inspection.
+
+**HARD SCOPE:** only `mcp-smoke-*` session ids ever reach the `data`-scope delete, even
+though that endpoint could technically remove any conversation. Real conversations are
+never touched.
+
+Do **not** grant `system` scope to discover `key_id`: that is privilege escalation and
+the skill never requests it. `key_id` is unnecessary for cleanup anyway.
 
 ### Uninstall safety (P2) — keep by default
 
@@ -488,10 +544,15 @@ system-scope workaround is attempted (that scope is not grantable to API keys by
 - **OpenAPI drift check** (`mcp/scripts/check_openapi_drift.py`):
   live source `https://docs.astrbot.app/openapi.json` (the scalar.html data URL;
   `info.version` is pinned 0.1.0 — drift is by ETag/content, never version).
-  `python3 mcp/scripts/check_openapi_drift.py` → exit 0 no drift / 1 runtime
-  endpoints affected (fix `mcp/runtime` first) / 2 drift elsewhere only.
+  `./mcp/.venv/bin/python mcp/scripts/check_openapi_drift.py` → exit 0 no **new**
+  drift / 1 runtime endpoints affected (fix `mcp/runtime` first) / 2 new drift
+  elsewhere only / 3 bad invocation (incl. Python < 3.10).
+  Needs **Python >= 3.10** — use the venv interpreter, a bare `python3` on 3.9 aborts.
   `--update` refreshes the local snapshot (`AstrBot OpenAPI v1.json`, gitignored);
-  `--offline` validates runtime paths against the snapshot without network.
+  `--offline` validates runtime paths against the snapshot without network;
+  `--no-baseline` shows the raw delta. Known drift is recorded in
+  `mcp/openapi_drift_baseline.json` (older-core compatibility) and is filtered out,
+  so the exit code only reflects **new** drift.
   Run after each AstrBot release.
   **v4.26.8 note (2026-07-30):** 145 paths, no delta vs prior snapshot for
   runtime-used routes. Core also has `PUT /api/v1/plugins/{plugin_id}/log-level`
@@ -642,7 +703,28 @@ no LAN IP, no token over the network.
 - **`ASTRBOT_TOKEN`**: must be an API key with the scopes you want (read-only
   tools need at least `plugin`; chat tools need `chat`). Create it in Dashboard
   `设置 → API Key`; it stays in the AstrBot UI config, not in the skill repo.
-- **`ASTRBOT_CHAT_USERNAME`**: the WebChat user used by `chat_probe`/`smoke_suite`.
+- **`ASTRBOT_CHAT_USERNAME`**: the owner used by `chat_probe`/`smoke_suite`, and it becomes
+  the session `creator`. Three supported choices:
+
+  | Owner value | Extra key scope | Session visibility | Session-row delete |
+  |---|---|---|---|
+  | **operator's real Dashboard (admin) username** — *preferred* | **`chat:admin`** (sensitive; also needs `chat`) | appears in **their own** WebChat | API key refused (creator gate); conversation still removable |
+  | a plain non-admin username | none | **invisible** in their WebChat | refused; conversation still removable |
+  | this key's identity `api_key:<key_id>` | none | not a human session | **key can delete it** |
+
+  Why prefer the admin username: sessions land in the operator's own WebChat, so anything
+  that slips past cleanup is still visible and manually removable — and the setup does not
+  depend on a synthetic name a future core might start validating.
+  Cost: the key must carry `chat:admin`, which lets it act as **any** configured admin id.
+  Treat that as a deliberate privilege decision; if it is unacceptable, use a plain
+  non-admin username and rely on the automatic conversation cleanup instead.
+  Without `chat:admin`, core rejects admin ids and the probe returns
+  `error_kind=admin_username_needs_chat_admin` (message: "username is reserved for an
+  AstrBot administrator").
+
+  Note the API-key identity is not discoverable through the chat API (`GET /chat/sessions`
+  requires an explicit `username`, and `/api-keys` needs `system` scope which this skill
+  deliberately does not request) — the operator supplies it once.
 - Docs tools (6) work even without any env — register the server and the agent
   gets import/checklist/search help immediately.
 - Do **not** commit `ASTRBOT_TOKEN` into the skill repo; it lives only in the
