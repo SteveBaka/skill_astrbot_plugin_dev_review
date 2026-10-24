@@ -16,6 +16,41 @@
 > it aborts with a version message (`exit 3`); `--offline` aborts too. Use the 3.12
 > venv interpreter (`./mcp/.venv/bin/python`) as shown above.
 
+## v4.29.3 check (2026-10-24) — new paths, all `system`, none API-key usable
+
+**No change needed to the snapshot or the accepted-drift baseline.** The published spec
+`docs.astrbot.app/openapi.json` is still **170 paths** and live drift is still exactly the
+11 accepted entries — verified by fetching it fresh.
+
+`openspec/openapi-v1.yaml` in the repo *did* change (3 commits touching it), adding four
+paths — all `system` scope, so a developer API key cannot call them:
+
+| Path | Scope | Note |
+|---|---|---|
+| `GET /api/v1/logs/export` | `system` | **BearerAuth only — “Developer API keys are not accepted”**. Diagnostic bundle (logs, trace history, config, plugin status, env); `redact=true` by default |
+| `GET /api/v1/trace/history` | `system` | persisted trace summaries (paging + query/errors filters) |
+| `GET /api/v1/trace/{trace_id}` | `system` | trace spans/events; 404 when evicted |
+| `GET /api/v1/trace/settings` | `system` | trace settings |
+
+⚠️ `/logs/export` is **not** a replacement for the MCP log bridge: it requires a dashboard
+admin session and explicitly rejects API keys. Log access for the skill still goes through
+`astrbot_plugin_mcp_logs_bridge`.
+
+### Published spec ≠ repo spec (important, affects how to read drift)
+
+`repo (master) = 240 paths`, `published = 170`, `snapshot = 163`. The published document is
+a **curated subset**, not a lagging copy — it omits whole areas: `system` (36 paths incl.
+api-keys, auth, backups, logs, trace, stats, updates, cron) plus `kb` (11), `tool` (6),
+`chat` WS (2) and unauthenticated/dashboard-only routes (15).
+So **never** conclude “we are 70 paths behind” from the repo file; compare against the
+published URL, which is what `check_openapi_drift.py` does.
+
+One repo-only plugin-facing route worth knowing (path-token auth, `-none-` scope, not in
+the published subset):
+
+`/api/v1/plugins/{plugin_id}/views/{view_name}/_t/{token}/{asset_path}` — the actual asset
+route behind the `content_path` documented in `webui/plugin-views.md`.
+
 ## v4.29.1 check (2026-10-17) — no OpenAPI change
 
 Range checked: `v4.29.0..dffe922` (the “bump version to 4.29.1” commit, PR #10602),

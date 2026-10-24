@@ -154,3 +154,24 @@ numeric ranges and other constraints — and it **rejects a non-object root**.
 Also: `openai_schema()` sorts tools by name for prompt-cache stability, so **registration
 order is not schema order** — keep tool names unique, or the wrong one silently shadows
 another.
+
+### Enum values on Gemini (AstrBot ≥4.29.3, #10635)
+
+Gemini rejects non-string `enum`s ("enum: only allowed for STRING type"). `convert_schema()`
+in `astrbot/core/agent/tool.py` now normalizes them instead of failing the request:
+
+| Declared | Sent to Gemini |
+|---|---|
+| `{"type": "string", "enum": ["a", 1]}` | `enum` kept, non-string members JSON-stringified (`"1"`) |
+| `{"type": "integer", "enum": [1, 2]}` | **`enum` removed**; type stays `integer`; `Allowed values: 1, 2` appended to `description` |
+| `{"enum": [..., null]}` | `nullable: true` added, `null` dropped from the list |
+
+Two consequences for plugin authors:
+
+- the allowed-values contract becomes **advisory text**, not schema enforcement on
+  non-string types — so **the handler must still validate** and reject out-of-range input;
+- do **not** rely on the model receiving an `enum` for int/bool params; put the accepted
+  values in the parameter description as well if the call must be accurate.
+
+Nullability differs per provider: `nullable` is a Gemini/OpenAPI-ism — OpenAI/Anthropic
+express the same intent differently, so do not hand-roll provider-specific schema keys.

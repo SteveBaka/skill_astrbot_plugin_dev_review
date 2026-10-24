@@ -32,6 +32,14 @@ When there is no corresponding translation or a field is missing, it falls back 
 }
 ```
 
+> **Sidebar / hover card (AstrBot ≥4.29.3, #10576)**: the sidebar's plugin group
+> headings, hover cards, and any default title that falls back to the plugin name now
+> also read the **localized** `metadata.display_name` and refresh immediately when the
+> language changes. The sidebar accepts only non-empty strings; a missing, blank, or
+> wrongly-typed translation falls back to the original `display_name`, then further.
+> Practical consequence: localizing `display_name` is now user-visible in the sidebar,
+> not just on the plugin detail page — keep the entries short (they are group headings).
+
 ## Configuration Item Translation
 
 `config` nests translations for `_conf_schema.json` text by configuration item name:
